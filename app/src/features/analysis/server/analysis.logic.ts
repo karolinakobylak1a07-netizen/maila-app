@@ -25,6 +25,11 @@ export class AnalysisDomainError extends Error {
   public readonly domainCode: string;
   public readonly details: Record<string, unknown> | undefined;
   public readonly requestId: string;
+  public readonly envelope: {
+    code: string;
+    message: string;
+    requestId: string;
+  };
 
   constructor(
     domainCode: string,
@@ -37,6 +42,15 @@ export class AnalysisDomainError extends Error {
     this.domainCode = domainCode;
     this.details = details;
     this.requestId = requestId;
+    this.envelope = {
+      code: domainCode,
+      message,
+      requestId,
+    };
+  }
+
+  toJSON() {
+    return this.envelope;
   }
 }
 
@@ -496,17 +510,31 @@ export class AnalysisService {
           ? "draft_low_confidence"
           : "ok";
 
-    const insights = selectedAreas.map((area, index) =>
-      this.mapAreaToInsight({
-        area,
-        requestId,
-        status,
-        missingContext,
-        conflictDetails,
-        linkedClientGoals,
-        linkedClientPriorities,
-        syncRun,
-        position: index + 1,
+    const insights = await Promise.all(
+      selectedAreas.map(async (area, index) => {
+        try {
+          return this.mapAreaToInsight({
+            area,
+            requestId,
+            status,
+            missingContext,
+            conflictDetails,
+            linkedClientGoals,
+            linkedClientPriorities,
+            syncRun,
+            position: index + 1,
+          });
+        } catch (error) {
+          throw new AnalysisDomainError(
+            "validation",
+            "INSIGHT_MAPPING_FAILED",
+            {
+              areaName: area.name,
+              cause: error instanceof Error ? error.message : "unknown",
+            },
+            requestId,
+          );
+        }
       }),
     );
 
@@ -530,84 +558,77 @@ export class AnalysisService {
   ): Promise<GenerateEmailStrategyOutput> {
     const requestId = input.requestId ?? `strategy-generate-${Date.now()}`;
     await this.validateAccess(userId, role, input.clientId);
+    return this.repository.withStrategyGenerationLock(input.clientId, async () => {
+      const lockAcquiredAt = new Date();
+      const syncRun = await this.repository.findLatestSyncRun(input.clientId);
+      const discovery = await this.repository.findDiscoveryAnswers(input.clientId);
+      const preconditions: Array<
+        "discovery.goals" | "discovery.segments" | "audit.sync_ok" | "audit.optimization_available"
+      > = [];
 
-    const syncRun = await this.repository.findLatestSyncRun(input.clientId);
-    const discovery = await this.repository.findDiscoveryAnswers(input.clientId);
-    const preconditions: Array<
-      "discovery.goals" | "discovery.segments" | "audit.sync_ok" | "audit.optimization_available"
-    > = [];
+      if (!discovery || discovery.goals.length === 0) {
+        preconditions.push("discovery.goals");
+      }
+      if (!discovery || discovery.segments.length === 0) {
+        preconditions.push("discovery.segments");
+      }
+      if (!syncRun || syncRun.status !== "OK") {
+        preconditions.push("audit.sync_ok");
+      }
 
-    if (!discovery || discovery.goals.length === 0) {
-      preconditions.push("discovery.goals");
-    }
-    if (!discovery || discovery.segments.length === 0) {
-      preconditions.push("discovery.segments");
-    }
-    if (!syncRun || syncRun.status !== "OK") {
-      preconditions.push("audit.sync_ok");
-    }
+      const optimizationAreas =
+        syncRun && syncRun.status === "OK"
+          ? this.generateOptimizationAreas(
+              await this.repository.listInventory(input.clientId),
+              requestId,
+              syncRun,
+            )
+          : [];
+      if (optimizationAreas.length === 0) {
+        preconditions.push("audit.optimization_available");
+      }
 
-    const optimizationAreas =
-      syncRun && syncRun.status === "OK"
-        ? this.generateOptimizationAreas(
-            await this.repository.listInventory(input.clientId),
-            requestId,
-            syncRun,
-          )
-        : [];
-    if (optimizationAreas.length === 0) {
-      preconditions.push("audit.optimization_available");
-    }
+      const existingRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
+      const latest = this.parseLatestEmailStrategy(existingRecords);
+      const nextVersion = (latest?.version ?? 0) + 1;
 
-    const existingRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
-    const latest = this.parseLatestEmailStrategy(existingRecords);
-    const nextVersion = (latest?.version ?? 0) + 1;
-
-    if (preconditions.length > 0) {
-      const blocked = this.buildEmailStrategyRecord({
-        clientId: input.clientId,
-        version: nextVersion,
-        status: "blocked_preconditions",
-        goals: discovery?.goals ?? [],
-        segments: discovery?.segments ?? [],
-        tone: discovery?.brandTone ?? "manual_validation_required",
-        priorities: [],
-        kpis: discovery?.primaryKpis ?? [],
-        requestId,
-        lastSyncRequestId: syncRun?.requestId ?? "missing-sync",
-        missingPreconditions: preconditions,
-      });
-
-      await this.repository.createAuditLog({
-        actorId: userId,
-        eventName: "strategy.email.generated",
-        requestId,
-        entityType: "CLIENT",
-        entityId: input.clientId,
-        details: {
-          status: "blocked_preconditions",
+      if (preconditions.length > 0) {
+        const blocked = this.buildEmailStrategyRecord({
           clientId: input.clientId,
-          missingPreconditions: blocked.missingPreconditions,
+          version: nextVersion,
+          status: "blocked_preconditions",
+          goals: discovery?.goals ?? [],
+          segments: discovery?.segments ?? [],
+          tone: discovery?.brandTone ?? "manual_validation_required",
+          priorities: [],
+          kpis: discovery?.primaryKpis ?? [],
           requestId,
-          timestamp: blocked.generatedAt.toISOString(),
-        },
-      });
+          lastSyncRequestId: syncRun?.requestId ?? "missing-sync",
+          missingPreconditions: preconditions,
+        });
 
-      return {
-        data: { strategy: blocked },
-        meta: { generatedAt: blocked.generatedAt, requestId },
-      };
-    }
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "strategy.email.generated",
+          requestId,
+          entityType: "CLIENT",
+          entityId: input.clientId,
+          details: {
+            status: "blocked_preconditions",
+            clientId: input.clientId,
+            missingPreconditions: blocked.missingPreconditions,
+            requestId,
+            timestamp: blocked.generatedAt.toISOString(),
+            lockAcquiredAt: lockAcquiredAt.toISOString(),
+          },
+        });
 
-    const insightsResult = await this.getContextInsights(userId, role, {
-      clientId: input.clientId,
-      requestId,
-      limit: 5,
-    });
-    const insights = insightsResult.data.insights;
-    const estimatedCostMs = optimizationAreas.length * 100;
+        return {
+          data: { strategy: blocked },
+          meta: { generatedAt: blocked.generatedAt, requestId },
+        };
+      }
 
-    if (estimatedCostMs > 700) {
       const resumable = existingRecords
         .map((record) => this.parseEmailStrategy(record.details))
         .find(
@@ -616,7 +637,6 @@ export class AnalysisService {
             record.status === "in_progress_or_timeout" &&
             record.lastSyncRequestId === syncRun!.requestId,
         );
-
       if (resumable) {
         return {
           data: { strategy: resumable },
@@ -624,18 +644,58 @@ export class AnalysisService {
         };
       }
 
-      const timedOut = this.buildEmailStrategyRecord({
+      const insightsResult = await this.getContextInsights(userId, role, {
+        clientId: input.clientId,
+        requestId,
+        limit: 5,
+      });
+      const insights = insightsResult.data.insights;
+      const estimatedCostMs = optimizationAreas.length * 100;
+
+      if (estimatedCostMs > 700) {
+        const timedOut = this.buildEmailStrategyRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "in_progress_or_timeout",
+          goals: discovery!.goals,
+          segments: discovery!.segments,
+          tone: discovery!.brandTone ?? "manual_validation_required",
+          priorities: insights.slice(0, 3).map((insight) => insight.title),
+          kpis: discovery!.primaryKpis,
+          requestId,
+          lastSyncRequestId: syncRun!.requestId,
+          retryHint: `Retry generateEmailStrategy for the same client and sync snapshot. Lock acquired at ${lockAcquiredAt.toISOString()}.`,
+        });
+
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "strategy.email.generated",
+          requestId,
+          entityType: "CLIENT",
+          entityId: input.clientId,
+          details: timedOut,
+        });
+
+        return {
+          data: { strategy: timedOut },
+          meta: { generatedAt: timedOut.generatedAt, requestId },
+        };
+      }
+
+      const strategy = this.buildEmailStrategyRecord({
         clientId: input.clientId,
         version: nextVersion,
-        status: "in_progress_or_timeout",
+        status: "ok",
         goals: discovery!.goals,
         segments: discovery!.segments,
-        tone: discovery!.brandTone ?? "manual_validation_required",
+        tone: discovery!.brandTone ?? "ekspercki i konkretny",
         priorities: insights.slice(0, 3).map((insight) => insight.title),
-        kpis: discovery!.primaryKpis,
+        kpis:
+          discovery!.primaryKpis.length > 0
+            ? discovery!.primaryKpis
+            : ["conversion_rate", "retention_rate"],
         requestId,
         lastSyncRequestId: syncRun!.requestId,
-        retryHint: "Retry generateEmailStrategy for the same client and sync snapshot.",
       });
 
       await this.repository.createAuditLog({
@@ -644,41 +704,14 @@ export class AnalysisService {
         requestId,
         entityType: "CLIENT",
         entityId: input.clientId,
-        details: timedOut,
+        details: strategy,
       });
 
       return {
-        data: { strategy: timedOut },
-        meta: { generatedAt: timedOut.generatedAt, requestId },
+        data: { strategy },
+        meta: { generatedAt: strategy.generatedAt, requestId },
       };
-    }
-
-    const strategy = this.buildEmailStrategyRecord({
-      clientId: input.clientId,
-      version: nextVersion,
-      status: "ok",
-      goals: discovery!.goals,
-      segments: discovery!.segments,
-      tone: discovery!.brandTone ?? "ekspercki i konkretny",
-      priorities: insights.slice(0, 3).map((insight) => insight.title),
-      kpis: discovery!.primaryKpis.length > 0 ? discovery!.primaryKpis : ["conversion_rate", "retention_rate"],
-      requestId,
-      lastSyncRequestId: syncRun!.requestId,
     });
-
-    await this.repository.createAuditLog({
-      actorId: userId,
-      eventName: "strategy.email.generated",
-      requestId,
-      entityType: "CLIENT",
-      entityId: input.clientId,
-      details: strategy,
-    });
-
-    return {
-      data: { strategy },
-      meta: { generatedAt: strategy.generatedAt, requestId },
-    };
   }
 
   async getLatestEmailStrategy(
@@ -798,7 +831,7 @@ export class AnalysisService {
     input: GenerateCampaignCalendarInput,
   ): Promise<GenerateCampaignCalendarOutput> {
     const requestId = input.requestId ?? `campaign-calendar-generate-${Date.now()}`;
-    await this.validateEditAccess(userId, role, input.clientId);
+    await this.validateAccess(userId, role, input.clientId);
 
     const strategyRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
     const latestStrategy = this.parseLatestEmailStrategy(strategyRecords);
@@ -831,6 +864,7 @@ export class AnalysisService {
       requiresManualValidation: !hasSeasonality,
     });
 
+    await this.validateEditAccess(userId, role, input.clientId);
     await this.repository.createAuditLog({
       actorId: userId,
       eventName: "strategy.campaign_calendar.generated",

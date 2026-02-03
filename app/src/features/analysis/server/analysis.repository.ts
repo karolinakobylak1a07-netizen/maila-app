@@ -60,6 +60,7 @@ export type StrategyAuditRecord = {
 
 export class AnalysisRepository {
   private readonly database: Database;
+  private static readonly strategyLocks = new Map<string, Promise<void>>();
 
   constructor(database: Database) {
     this.database = database;
@@ -131,6 +132,65 @@ export class AnalysisRepository {
         errorCode: payload.errorCode,
         errorMessage: payload.errorMessage,
       },
+    });
+  }
+
+  async persistSyncRunWithInventory(payload: {
+    runId: string;
+    clientId: string;
+    status: KlaviyoSyncStatus;
+    finishedAt: Date;
+    accountCount: number;
+    flowCount: number;
+    emailCount: number;
+    formCount: number;
+    errorCode?: string;
+    errorMessage?: string;
+    inventory: InventoryItemRecord[];
+  }) {
+    await this.database.$transaction(async (tx) => {
+      if (payload.inventory.length > 0) {
+        await Promise.all(
+          payload.inventory.map((item) =>
+            tx.klaviyoInventoryItem.upsert({
+              where: {
+                clientId_entityType_externalId: {
+                  clientId: payload.clientId,
+                  entityType: item.entityType,
+                  externalId: item.externalId,
+                },
+              },
+              create: {
+                clientId: payload.clientId,
+                entityType: item.entityType,
+                externalId: item.externalId,
+                name: item.name,
+                itemStatus: item.itemStatus,
+                lastSyncAt: payload.finishedAt,
+              },
+              update: {
+                name: item.name,
+                itemStatus: item.itemStatus,
+                lastSyncAt: payload.finishedAt,
+              },
+            }),
+          ),
+        );
+      }
+
+      await tx.klaviyoSyncRun.update({
+        where: { id: payload.runId },
+        data: {
+          status: payload.status,
+          finishedAt: payload.finishedAt,
+          accountCount: payload.accountCount,
+          flowCount: payload.flowCount,
+          emailCount: payload.emailCount,
+          formCount: payload.formCount,
+          errorCode: payload.errorCode,
+          errorMessage: payload.errorMessage,
+        },
+      });
     });
   }
 
@@ -421,5 +481,29 @@ export class AnalysisRepository {
         details: payload.details as Prisma.InputJsonValue | undefined,
       },
     });
+  }
+
+  async withStrategyGenerationLock<T>(
+    clientId: string,
+    handler: () => Promise<T>,
+  ): Promise<T> {
+    const key = `strategy:${clientId}`;
+    const previous = AnalysisRepository.strategyLocks.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const lockChain = previous.then(() => current);
+    AnalysisRepository.strategyLocks.set(key, lockChain);
+
+    await previous;
+    try {
+      return await this.database.$transaction(async () => handler());
+    } finally {
+      release();
+      if (AnalysisRepository.strategyLocks.get(key) === lockChain) {
+        AnalysisRepository.strategyLocks.delete(key);
+      }
+    }
   }
 }

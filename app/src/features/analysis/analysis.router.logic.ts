@@ -7,12 +7,19 @@ export { assertSessionRole };
 
 export const mapAnalysisErrorToTRPC = (error: unknown): never => {
   if (error instanceof AnalysisDomainError) {
+    const errorEnvelope = {
+      code: error.envelope.code,
+      message: error.envelope.message,
+      requestId: error.envelope.requestId,
+    };
+
     if (error.domainCode === "forbidden") {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: error.message,
+        message: errorEnvelope.message,
         cause: {
           details: error.details,
+          error: errorEnvelope,
         },
       });
     }
@@ -20,18 +27,20 @@ export const mapAnalysisErrorToTRPC = (error: unknown): never => {
     if (error.domainCode === "validation") {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: error.message,
+        message: errorEnvelope.message,
         cause: {
           details: error.details,
+          error: errorEnvelope,
         },
       });
     }
 
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: error.message,
+      message: errorEnvelope.message,
       cause: {
         details: error.details,
+        error: errorEnvelope,
       },
     });
   }

@@ -44,6 +44,10 @@ export class AnalysisService extends BaseAnalysisService {
 
     const referenceDate = latest.finishedAt ?? latest.startedAt;
     const ageHours = (Date.now() - referenceDate.getTime()) / (1000 * 60 * 60);
+    const validatedRequestId =
+      typeof latest.requestId === "string" && latest.requestId.trim().length > 0
+        ? latest.requestId
+        : null;
 
     return {
       data: {
@@ -56,7 +60,7 @@ export class AnalysisService extends BaseAnalysisService {
           emailCount: latest.emailCount,
           formCount: latest.formCount,
         },
-        requestId: latest.requestId,
+        requestId: validatedRequestId ?? `sync-status-missing-request-id-${latest.id}`,
       },
     };
   }
@@ -73,9 +77,22 @@ export class AnalysisService extends BaseAnalysisService {
   async runDailySyncForAllClients(requestId: string) {
     const clients = await this.syncRepository.listClientIds();
     const results = await Promise.all(
-      clients.map((client, index) =>
-        this.performSync(client.id, "DAILY", `${requestId}-${index + 1}`, null),
-      ),
+      clients.map(async (client, index) => {
+        const latest = await this.syncRepository.findLatestSyncRun(client.id);
+        if (latest?.status === "IN_PROGRESS") {
+          return {
+            data: {
+              status: "IN_PROGRESS",
+              requestId: latest.requestId,
+              clientId: client.id,
+              trigger: "DAILY" as const,
+              skipped: true,
+            },
+          };
+        }
+
+        return this.performSync(client.id, "DAILY", `${requestId}-${index + 1}`, null);
+      }),
     );
 
     return {
@@ -142,27 +159,21 @@ export class AnalysisService extends BaseAnalysisService {
       formCount: inventory.filter((item) => item.entityType === "FORM").length,
     };
 
-    if (inventory.length > 0) {
-      await this.syncRepository.upsertInventoryItems(
-        clientId,
-        finishedAt,
-        inventory.map((item) => ({
-          entityType: item.entityType,
-          externalId: item.externalId,
-          name: item.name,
-          itemStatus: item.itemStatus ?? "OK",
-          lastSyncAt: finishedAt,
-        })),
-      );
-    }
-
-    await this.syncRepository.updateSyncRun({
+    await this.syncRepository.persistSyncRunWithInventory({
       runId: syncRun.id,
+      clientId,
       status,
       finishedAt,
       ...counts,
       errorCode,
       errorMessage,
+      inventory: inventory.map((item) => ({
+        entityType: item.entityType,
+        externalId: item.externalId,
+        name: item.name,
+        itemStatus: item.itemStatus ?? "OK",
+        lastSyncAt: finishedAt,
+      })),
     });
 
     await this.syncRepository.createAuditLog({
@@ -192,10 +203,6 @@ export class AnalysisService extends BaseAnalysisService {
     clientId: string,
     requireEdit: boolean,
   ) {
-    if (role === "OPERATIONS") {
-      return;
-    }
-
     const membership = await this.syncRepository.findMembership(userId, clientId);
     if (!membership) {
       throw new AnalysisDomainError(
