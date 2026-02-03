@@ -390,6 +390,22 @@ export const implementationAlertsSchema = z.object({
 export const getImplementationAlertsSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const implementationReportStatusSchema = z.enum([
+  "ok",
+  "blocked",
+  "needs_configuration",
+  "at_risk",
+]);
+export const implementationReportSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  status: implementationReportStatusSchema,
+  markdown: z.string().min(1),
+});
+export const getImplementationReportSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -411,6 +427,7 @@ export type GenerateImplementationChecklistSchema = z.infer<typeof generateImple
 export type GetLatestImplementationChecklistSchema = z.infer<typeof getLatestImplementationChecklistSchema>;
 export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImplementationChecklistStepSchema>;
 export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
+export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -500,3 +517,5 @@ export type ImplementationAlertProgressState = z.infer<typeof implementationAler
 export type ImplementationAlert = z.infer<typeof implementationAlertSchema>;
 export type ImplementationAlertsStatus = z.infer<typeof implementationAlertsStatusSchema>;
 export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;
+export type ImplementationReportStatus = z.infer<typeof implementationReportStatusSchema>;
+export type ImplementationReport = z.infer<typeof implementationReportSchema>;

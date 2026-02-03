@@ -109,6 +109,8 @@ export function ClientsWorkspace() {
     useState<string | null>(null);
   const [implementationAlertsError, setImplementationAlertsError] = useState<string | null>(null);
   const [implementationAlertsLoading, setImplementationAlertsLoading] = useState(false);
+  const [implementationReportLoading, setImplementationReportLoading] = useState(false);
+  const [implementationReportMarkdown, setImplementationReportMarkdown] = useState<string | null>(null);
 
   const utils = api.useUtils();
 
@@ -263,6 +265,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const implementationReportQuery = api.analysis.getImplementationReport.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: false,
+      retry: false,
+    },
+  );
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -337,6 +348,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestPersonalizedEmailDraft.invalidate(),
       utils.analysis.getLatestImplementationChecklist.invalidate(),
       utils.analysis.getImplementationAlerts.invalidate(),
+      utils.analysis.getImplementationReport.invalidate(),
     ]);
   };
 
@@ -1010,6 +1022,40 @@ export function ClientsWorkspace() {
     }
   };
 
+  const downloadImplementationReport = async () => {
+    if (!activeClientId) {
+      setImplementationAlertsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setImplementationReportLoading(true);
+    try {
+      const result = await implementationReportQuery.refetch();
+      const markdown = result.data?.data.report.markdown;
+      if (!markdown) {
+        throw new Error("IMPLEMENTATION_REPORT_EMPTY");
+      }
+      setImplementationReportMarkdown(markdown);
+
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `implementation-report-${activeClientId}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setImplementationAlertsError(null);
+    } catch (error) {
+      setImplementationAlertsError(
+        withRequestId("Nie udalo sie pobrac raportu wdrozeniowego.", extractRequestId(error)),
+      );
+    } finally {
+      setImplementationReportLoading(false);
+    }
+  };
+
   const updateImplementationChecklistStep = async (
     stepId: string,
     status: "pending" | "in_progress" | "done",
@@ -1254,12 +1300,15 @@ export function ClientsWorkspace() {
         <div className="mt-4">
           <ImplementationAlertsCard
             loading={implementationAlertsLoading}
+            reportLoading={implementationReportLoading}
             error={implementationAlertsError}
             requestId={
               implementationAlertsQuery.data?.meta.requestId ??
               extractRequestId(implementationAlertsQuery.error)
             }
             alerts={implementationAlertsQuery.data?.data.alerts ?? null}
+            reportMarkdown={implementationReportMarkdown}
+            onDownloadReport={downloadImplementationReport}
           />
         </div>
         </div>

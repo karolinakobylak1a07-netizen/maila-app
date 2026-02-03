@@ -1839,4 +1839,71 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.alerts.alerts).toHaveLength(0);
     });
   });
+
+  describe("implementation report generation (Story 5.4)", () => {
+    it("returns markdown report with meta/completed/at_risk/blockers sections", async () => {
+      const now = new Date("2026-02-12T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "FAILED_AUTH",
+        requestId: "sync-5-4",
+        startedAt: now,
+        finishedAt: now,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "flow-gap", name: "Welcome", itemStatus: "GAP" },
+      ]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([
+        {
+          id: "checklist-report",
+          requestId: "checklist-report-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            requestId: "checklist-report-1",
+            generatedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            totalSteps: 3,
+            completedSteps: 1,
+            progressPercent: 33,
+            steps: [
+              {
+                id: "step-1",
+                title: "Skonfigurowac flow welcome",
+                sourceType: "flow",
+                sourceRef: "Welcome",
+                status: "done",
+                completedAt: now.toISOString(),
+              },
+              {
+                id: "step-2",
+                title: "Skonfigurowac kampanie startowa",
+                sourceType: "campaign",
+                sourceRef: "week-1",
+                status: "pending",
+                completedAt: null,
+              },
+            ],
+          },
+        },
+      ]);
+
+      const result = await analysisService.getImplementationReport("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.report.status).toBe("blocked");
+      expect(result.data.report.markdown).toContain("## meta");
+      expect(result.data.report.markdown).toContain("## completed");
+      expect(result.data.report.markdown).toContain("## at_risk");
+      expect(result.data.report.markdown).toContain("## blockers");
+      expect(result.data.report.markdown).toContain("- [x] Skonfigurowac flow welcome");
+    });
+  });
 });

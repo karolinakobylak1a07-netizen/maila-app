@@ -39,6 +39,9 @@ import {
   implementationAlertsStatusSchema,
   implementationAlertProgressStateSchema,
   getImplementationAlertsSchema,
+  implementationReportSchema,
+  implementationReportStatusSchema,
+  getImplementationReportSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -631,6 +634,27 @@ describe('OptimizationArea Schema', () => {
     it('should validate getImplementationAlerts input', () => {
       expect(getImplementationAlertsSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getImplementationAlertsSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse implementation report markdown payload', () => {
+      expect(implementationReportStatusSchema.safeParse('ok').success).toBe(true);
+      expect(implementationReportStatusSchema.safeParse('blocked').success).toBe(true);
+      expect(implementationReportStatusSchema.safeParse('needs_configuration').success).toBe(true);
+      expect(implementationReportStatusSchema.safeParse('at_risk').success).toBe(true);
+
+      const result = implementationReportSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'req-report',
+        generatedAt: new Date('2026-02-12T12:00:00.000Z'),
+        status: 'at_risk',
+        markdown: '# Raport wdrozeniowy\n\n## meta\n- status: at_risk',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getImplementationReport input', () => {
+      expect(getImplementationReportSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getImplementationReportSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

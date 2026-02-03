@@ -9,6 +9,7 @@ import type {
   ImplementationChecklist,
   ImplementationAlerts,
   ImplementationAlert,
+  ImplementationReport,
   ImplementationChecklistStep,
   ImplementationChecklistStepStatus,
   PersonalizedEmailDraft,
@@ -386,6 +387,19 @@ export interface GetImplementationAlertsInput {
 export interface GetImplementationAlertsOutput {
   data: {
     alerts: ImplementationAlerts;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GetImplementationReportInput {
+  clientId: string;
+}
+
+export interface GetImplementationReportOutput {
+  data: {
+    report: ImplementationReport;
   };
   meta: {
     requestId: string;
@@ -1725,6 +1739,73 @@ export class AnalysisService {
           blockerCount,
           configGapCount,
           alerts: sortedAlerts,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
+  async getImplementationReport(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: GetImplementationReportInput,
+  ): Promise<GetImplementationReportOutput> {
+    const requestId = `implementation-report-${Date.now()}`;
+    await this.validateImplementationReadAccess(userId, role, input.clientId);
+
+    const [alertsOutput, checklistRecords] = await Promise.all([
+      this.getImplementationAlerts(userId, role, input),
+      this.repository.listLatestImplementationChecklistAudit(input.clientId, 20),
+    ]);
+    const checklist = this.parseLatestImplementationChecklist(checklistRecords ?? []);
+    const alerts = alertsOutput.data.alerts;
+    const completedSteps = checklist?.steps.filter((step) => step.status === "done") ?? [];
+    const atRiskAlerts = alerts.alerts.filter(
+      (alert) => alert.progressState === "at_risk" || alert.type === "configuration_gap",
+    );
+    const blockerAlerts = alerts.alerts.filter((alert) => alert.type === "blocker");
+    const generatedAt = new Date();
+
+    const markdown = [
+      "# Raport wdrozeniowy",
+      "",
+      "## meta",
+      `- generated_at: ${generatedAt.toISOString()}`,
+      `- request_id: ${requestId}`,
+      `- status: ${alerts.status}`,
+      `- checklist_progress: ${checklist?.progressPercent ?? 0}%`,
+      `- alerts_total: ${alerts.alerts.length}`,
+      "",
+      "## completed",
+      ...(completedSteps.length === 0
+        ? ["- [ ] Brak zakonczonych krokow checklisty."]
+        : completedSteps.map((step) => `- [x] ${step.title}`)),
+      "",
+      "## at_risk",
+      ...(atRiskAlerts.length === 0
+        ? ["- [x] Brak pozycji at_risk."]
+        : atRiskAlerts.map(
+            (alert) =>
+              `- [ ] ${alert.title} (priority: ${alert.priority}, impact: ${alert.impactScore})`,
+          )),
+      "",
+      "## blockers",
+      ...(blockerAlerts.length === 0
+        ? ["- [x] Brak aktywnych blockerow."]
+        : blockerAlerts.map(
+            (alert) =>
+              `- [ ] ${alert.title} (priority: ${alert.priority}, impact: ${alert.impactScore})`,
+          )),
+    ].join("\n");
+
+    return {
+      data: {
+        report: {
+          clientId: input.clientId,
+          requestId,
+          generatedAt,
+          status: alerts.status,
+          markdown,
         },
       },
       meta: { requestId },
