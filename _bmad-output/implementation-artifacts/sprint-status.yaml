@@ -72,8 +72,8 @@ development_status:
   5-3-priorytetyzacja-wdrozen-i-alerty-postepow: done
   5-4-generowanie-raportu-wdrozeniowego: done
   epic-5-retrospective: optional
-  epic-6: backlog
-  6-1-raporty-wynikow-klienta: backlog
+  epic-6: in-progress
+  6-1-zbieranie-kontekstu-produktu-na-potrzeby-audytu: done
   6-2-rekomendacje-optymalizacyjne-z-priorytetem: backlog
   6-3-planowanie-testow-a-b: backlog
   6-4-wersjonowanie-strategii-planow-i-tresci: backlog
