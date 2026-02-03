@@ -431,6 +431,22 @@ export const implementationDocumentationSchema = z.object({
 export const getImplementationDocumentationSchema = z.object({
   clientId: z.string().cuid(),
 });
+// Story 6.7: external documentation export contract (Notion / Google Docs).
+export const implementationDocumentationExportTargetSchema = z.enum([
+  "notion",
+  "google_docs",
+]);
+export const implementationDocumentationExportSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1),
+  target: implementationDocumentationExportTargetSchema,
+  documentUrl: z.string().url(),
+  fallbackUsed: z.boolean(),
+});
+export const exportImplementationDocumentationSchema = z.object({
+  clientId: z.string().cuid(),
+  target: implementationDocumentationExportTargetSchema,
+});
 export const auditProductContextStatusSchema = z.enum([
   "ok",
   "missing_context",
@@ -528,6 +544,7 @@ export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImple
 export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
 export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
 export type GetImplementationDocumentationSchema = z.infer<typeof getImplementationDocumentationSchema>;
+export type ExportImplementationDocumentationSchema = z.infer<typeof exportImplementationDocumentationSchema>;
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
@@ -625,6 +642,8 @@ export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;
 export type ImplementationReportStatus = z.infer<typeof implementationReportStatusSchema>;
 export type ImplementationReport = z.infer<typeof implementationReportSchema>;
 export type ImplementationDocumentation = z.infer<typeof implementationDocumentationSchema>;
+export type ImplementationDocumentationExportTarget = z.infer<typeof implementationDocumentationExportTargetSchema>;
+export type ImplementationDocumentationExport = z.infer<typeof implementationDocumentationExportSchema>;
 export type AuditProductContextStatus = z.infer<typeof auditProductContextStatusSchema>;
 export type AuditProductContext = z.infer<typeof auditProductContextSchema>;
 export type ProductCoverageItemStatus = z.infer<typeof productCoverageItemStatusSchema>;

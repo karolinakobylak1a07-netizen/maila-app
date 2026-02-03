@@ -26,6 +26,7 @@ import {
   getImplementationAlertsSchema,
   getImplementationReportSchema,
   getImplementationDocumentationSchema,
+  exportImplementationDocumentationSchema,
   getAuditProductContextSchema,
   getProductCoverageAnalysisSchema,
   getCommunicationImprovementRecommendationsSchema,
@@ -60,6 +61,7 @@ type AnalysisServiceContract = Pick<
   | "getImplementationAlerts"
   | "getImplementationReport"
   | "getImplementationDocumentation"
+  | "exportImplementationDocumentation"
   | "getAuditProductContext"
   | "getProductCoverageAnalysis"
   | "getCommunicationImprovementRecommendations"
@@ -420,6 +422,20 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getImplementationDocumentation(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    exportImplementationDocumentation: protectedProcedure
+      .input(exportImplementationDocumentationSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.exportImplementationDocumentation(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
             input,

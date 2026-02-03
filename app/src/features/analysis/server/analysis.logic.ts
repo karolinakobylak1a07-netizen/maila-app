@@ -1,5 +1,11 @@
 import { AnalysisRepository } from "./analysis.repository";
 import { db } from "~/server/db";
+import {
+  DocumentationExportAdapter,
+  DocumentationExportError,
+  type DocumentationExportAdapterPort,
+  type DocumentationExportTarget,
+} from "~/server/integrations/documentation/documentation-export-adapter";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
   AuditProductContext,
@@ -71,6 +77,7 @@ export class AnalysisDomainError extends Error {
 export interface AnalysisServiceDependencies {
   repository: AnalysisRepository;
   adapter: any;
+  documentationExportAdapter: DocumentationExportAdapterPort;
 }
 
 export interface GetOptimizationAreasInput {
@@ -429,6 +436,22 @@ export interface GetImplementationDocumentationOutput {
   };
 }
 
+export interface ExportImplementationDocumentationInput {
+  clientId: string;
+  target: "notion" | "google_docs";
+}
+
+export interface ExportImplementationDocumentationOutput {
+  data: {
+    target: "notion" | "google_docs";
+    documentUrl: string;
+    fallbackUsed: boolean;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export interface GetAuditProductContextInput {
   clientId: string;
 }
@@ -471,9 +494,12 @@ export interface GetCommunicationImprovementRecommendationsOutput {
 
 export class AnalysisService {
   private readonly repository: AnalysisRepository;
+  private readonly documentationExportAdapter: DocumentationExportAdapterPort;
 
   constructor(dependencies?: Partial<AnalysisServiceDependencies>) {
     this.repository = dependencies?.repository ?? new AnalysisRepository(db);
+    this.documentationExportAdapter =
+      dependencies?.documentationExportAdapter ?? new DocumentationExportAdapter();
   }
 
   async getSyncStatus(
@@ -2190,6 +2216,70 @@ export class AnalysisService {
     };
   }
 
+  async exportImplementationDocumentation(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: ExportImplementationDocumentationInput,
+  ): Promise<ExportImplementationDocumentationOutput> {
+    const requestId = `implementation-documentation-export-${Date.now()}`;
+    const documentationResult = await this.getImplementationDocumentation(userId, role, {
+      clientId: input.clientId,
+    });
+    const markdown = documentationResult.data.documentation.markdown;
+    const title = `Implementation Documentation ${input.clientId}`;
+
+    const primaryTarget = input.target;
+    const fallbackTarget: DocumentationExportTarget =
+      primaryTarget === "notion" ? "google_docs" : "notion";
+
+    const primaryResult = await this.tryExportWithRetry({
+      target: primaryTarget,
+      clientId: input.clientId,
+      title,
+      markdown,
+      requestId,
+      retries: 2,
+    });
+
+    if (primaryResult) {
+      return {
+        data: {
+          target: primaryTarget,
+          documentUrl: primaryResult.documentUrl,
+          fallbackUsed: false,
+        },
+        meta: { requestId },
+      };
+    }
+
+    const fallbackResult = await this.tryExportWithRetry({
+      target: fallbackTarget,
+      clientId: input.clientId,
+      title,
+      markdown,
+      requestId,
+      retries: 1,
+    });
+
+    if (!fallbackResult) {
+      throw new AnalysisDomainError(
+        "external_api_error",
+        "IMPLEMENTATION_DOCUMENTATION_EXPORT_FAILED",
+        { target: primaryTarget, fallbackTarget },
+        requestId,
+      );
+    }
+
+    return {
+      data: {
+        target: fallbackTarget,
+        documentUrl: fallbackResult.documentUrl,
+        fallbackUsed: true,
+      },
+      meta: { requestId },
+    };
+  }
+
   async getAuditProductContext(
     userId: string,
     role: "OWNER" | "STRATEGY",
@@ -3820,6 +3910,47 @@ export class AnalysisService {
       currentStatus:
         typeof currentObject.status === "string" ? currentObject.status : null,
     };
+  }
+
+  private async tryExportWithRetry(payload: {
+    target: DocumentationExportTarget;
+    clientId: string;
+    title: string;
+    markdown: string;
+    requestId: string;
+    retries: number;
+  }): Promise<{ documentUrl: string } | null> {
+    let attempt = 0;
+    while (attempt <= payload.retries) {
+      try {
+        if (payload.target === "notion") {
+          return await this.documentationExportAdapter.exportToNotion({
+            clientId: payload.clientId,
+            title: payload.title,
+            markdown: payload.markdown,
+            requestId: payload.requestId,
+          });
+        }
+        return await this.documentationExportAdapter.exportToGoogleDocs({
+          clientId: payload.clientId,
+          title: payload.title,
+          markdown: payload.markdown,
+          requestId: payload.requestId,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof DocumentationExportError) &&
+          !(error instanceof Error)
+        ) {
+          return null;
+        }
+        attempt += 1;
+        if (attempt > payload.retries) {
+          return null;
+        }
+      }
+    }
+    return null;
   }
 
   private buildImplementationChecklistSteps(

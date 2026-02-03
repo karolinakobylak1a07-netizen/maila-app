@@ -1,5 +1,6 @@
 import { db } from "~/server/db";
 import { KlaviyoAdapter, KlaviyoAdapterError } from "~/server/integrations/klaviyo/klaviyo-adapter";
+import type { DocumentationExportAdapterPort } from "~/server/integrations/documentation/documentation-export-adapter";
 
 import { AnalysisDomainError, AnalysisService as BaseAnalysisService } from "./analysis.logic.ts";
 import { AnalysisRepository } from "./analysis.repository";
@@ -10,6 +11,7 @@ type SyncTrigger = "MANUAL" | "DAILY";
 type AnalysisServiceDependencies = {
   repository?: AnalysisRepository;
   adapter?: KlaviyoAdapter;
+  documentationExportAdapter?: DocumentationExportAdapterPort;
 };
 
 export class AnalysisService extends BaseAnalysisService {
@@ -18,7 +20,11 @@ export class AnalysisService extends BaseAnalysisService {
 
   constructor(dependencies: AnalysisServiceDependencies = {}) {
     const repository = dependencies.repository ?? new AnalysisRepository(db);
-    super({ repository, adapter: dependencies.adapter });
+    super({
+      repository,
+      adapter: dependencies.adapter,
+      documentationExportAdapter: dependencies.documentationExportAdapter,
+    });
     this.syncRepository = repository;
     this.syncAdapter = dependencies.adapter ?? new KlaviyoAdapter();
   }

@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisDomainError, AnalysisService } from "./analysis.service";
 import type { AnalysisRepository } from "./analysis.repository";
 import type { KlaviyoAdapter } from "~/server/integrations/klaviyo/klaviyo-adapter";
+import { DocumentationExportError, type DocumentationExportAdapterPort } from "~/server/integrations/documentation/documentation-export-adapter";
 
 describe("AnalysisService.getOptimizationAreas", () => {
   let analysisService: AnalysisService;
   let mockRepository: Partial<AnalysisRepository>;
   let mockAdapter: Partial<KlaviyoAdapter>;
+  let mockDocumentationExportAdapter: Partial<DocumentationExportAdapterPort>;
 
   beforeEach(() => {
     mockRepository = {
@@ -40,10 +42,15 @@ describe("AnalysisService.getOptimizationAreas", () => {
       fetchInventory: vi.fn(),
       fetchSegments: vi.fn(),
     };
+    mockDocumentationExportAdapter = {
+      exportToNotion: vi.fn(),
+      exportToGoogleDocs: vi.fn(),
+    };
 
     analysisService = new AnalysisService({
       repository: mockRepository as AnalysisRepository,
       adapter: mockAdapter as KlaviyoAdapter,
+      documentationExportAdapter: mockDocumentationExportAdapter as DocumentationExportAdapterPort,
     });
   });
 
@@ -2482,6 +2489,76 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.documentation.markdown).toContain("## Recommendations");
       expect(result.data.documentation.markdown).toContain("## Audit Log");
       expect(result.data.documentation.markdown).toContain("strategy.email.generated");
+    });
+  });
+
+  describe("implementation documentation export (Story 6.7)", () => {
+    it("exports documentation to notion and returns created URL", async () => {
+      const now = new Date("2026-02-22T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue(null);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "audit-export-1",
+          requestId: "req-audit-export-1",
+          eventName: "strategy.email.generated",
+          createdAt: now,
+          actorId: "u1",
+          details: {},
+        },
+      ]);
+      mockDocumentationExportAdapter.exportToNotion = vi.fn().mockResolvedValue({
+        documentUrl: "https://www.notion.so/export-doc-1",
+      });
+      mockDocumentationExportAdapter.exportToGoogleDocs = vi.fn().mockResolvedValue({
+        documentUrl: "https://docs.google.com/document/d/export-doc-1/edit",
+      });
+
+      const result = await analysisService.exportImplementationDocumentation("u1", "OPERATIONS", {
+        clientId: "client-1",
+        target: "notion",
+      });
+
+      expect(result.data.target).toBe("notion");
+      expect(result.data.fallbackUsed).toBe(false);
+      expect(result.data.documentUrl).toBe("https://www.notion.so/export-doc-1");
+      expect(mockDocumentationExportAdapter.exportToNotion).toHaveBeenCalledTimes(1);
+      expect(mockDocumentationExportAdapter.exportToGoogleDocs).not.toHaveBeenCalled();
+    });
+
+    it("falls back to google docs after notion API errors", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue(null);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([]);
+      mockDocumentationExportAdapter.exportToNotion = vi.fn().mockRejectedValue(
+        new DocumentationExportError("notion", "api_error", "temporary failure"),
+      );
+      mockDocumentationExportAdapter.exportToGoogleDocs = vi.fn().mockResolvedValue({
+        documentUrl: "https://docs.google.com/document/d/fallback-doc/edit",
+      });
+
+      const result = await analysisService.exportImplementationDocumentation("u1", "OPERATIONS", {
+        clientId: "client-1",
+        target: "notion",
+      });
+
+      expect(mockDocumentationExportAdapter.exportToNotion).toHaveBeenCalledTimes(3);
+      expect(mockDocumentationExportAdapter.exportToGoogleDocs).toHaveBeenCalledTimes(1);
+      expect(result.data.target).toBe("google_docs");
+      expect(result.data.fallbackUsed).toBe(true);
+      expect(result.data.documentUrl).toContain("fallback-doc");
     });
   });
 

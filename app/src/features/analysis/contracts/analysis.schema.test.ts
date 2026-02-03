@@ -46,6 +46,9 @@ import {
   getImplementationReportSchema,
   implementationDocumentationSchema,
   getImplementationDocumentationSchema,
+  implementationDocumentationExportTargetSchema,
+  implementationDocumentationExportSchema,
+  exportImplementationDocumentationSchema,
   auditProductContextSchema,
   auditProductContextStatusSchema,
   getAuditProductContextSchema,
@@ -708,6 +711,35 @@ describe('OptimizationArea Schema', () => {
     it('should validate getImplementationDocumentation input', () => {
       expect(getImplementationDocumentationSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getImplementationDocumentationSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse implementation documentation export payload', () => {
+      expect(implementationDocumentationExportTargetSchema.safeParse('notion').success).toBe(true);
+      expect(implementationDocumentationExportTargetSchema.safeParse('google_docs').success).toBe(true);
+
+      const result = implementationDocumentationExportSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'req-export',
+        target: 'notion',
+        documentUrl: 'https://www.notion.so/doc-123',
+        fallbackUsed: false,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate exportImplementationDocumentation input', () => {
+      expect(exportImplementationDocumentationSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        target: 'notion',
+      }).success).toBe(true);
+      expect(exportImplementationDocumentationSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        target: 'google_docs',
+      }).success).toBe(true);
+      expect(exportImplementationDocumentationSchema.safeParse({
+        clientId: 'invalid',
+        target: 'notion',
+      }).success).toBe(false);
     });
 
     it('should parse audit product context payload', () => {

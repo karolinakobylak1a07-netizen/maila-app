@@ -6,6 +6,8 @@ type ImplementationAlertsCardProps = {
   loading: boolean;
   reportLoading: boolean;
   documentationLoading: boolean;
+  exportLoading: boolean;
+  exportTarget: "notion" | "google_docs";
   error: string | null;
   requestId: string | null;
   alerts: ImplementationAlerts | null;
@@ -13,6 +15,8 @@ type ImplementationAlertsCardProps = {
   documentationMarkdown: string | null;
   onDownloadReport: () => void;
   onDownloadDocumentation: () => void;
+  onExportTargetChange: (target: "notion" | "google_docs") => void;
+  onExportDocumentation: () => void;
 };
 
 export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
@@ -58,6 +62,24 @@ export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
             className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             {props.documentationLoading ? "Generowanie..." : "Pobierz dokumentacje wdrozeniowa"}
+          </button>
+          <select
+            value={props.exportTarget}
+            onChange={(event) =>
+              props.onExportTargetChange(event.target.value as "notion" | "google_docs")
+            }
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700"
+          >
+            <option value="notion">Eksport: Notion</option>
+            <option value="google_docs">Eksport: Google Docs</option>
+          </select>
+          <button
+            type="button"
+            onClick={props.onExportDocumentation}
+            disabled={props.exportLoading}
+            className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {props.exportLoading ? "Eksport..." : "Eksportuj do..."}
           </button>
         </div>
       </div>

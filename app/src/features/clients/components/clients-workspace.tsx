@@ -116,6 +116,8 @@ export function ClientsWorkspace() {
   const [implementationReportMarkdown, setImplementationReportMarkdown] = useState<string | null>(null);
   const [implementationDocumentationLoading, setImplementationDocumentationLoading] = useState(false);
   const [implementationDocumentationMarkdown, setImplementationDocumentationMarkdown] = useState<string | null>(null);
+  const [implementationExportLoading, setImplementationExportLoading] = useState(false);
+  const [implementationExportTarget, setImplementationExportTarget] = useState<"notion" | "google_docs">("notion");
   const [auditProductContextError, setAuditProductContextError] = useState<string | null>(null);
   const [auditProductContextLoading, setAuditProductContextLoading] = useState(false);
   const [auditProductContextRefreshing, setAuditProductContextRefreshing] = useState(false);
@@ -297,6 +299,8 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const exportImplementationDocumentationMutation =
+    api.analysis.exportImplementationDocumentation.useMutation();
   const auditProductContextQuery = api.analysis.getAuditProductContext.useQuery(
     {
       clientId: activeClientId ?? "000000000000000000000000",
@@ -1216,6 +1220,33 @@ export function ClientsWorkspace() {
     }
   };
 
+  const exportImplementationDocumentation = async () => {
+    if (!activeClientId) {
+      setImplementationAlertsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setImplementationExportLoading(true);
+    try {
+      const result = await exportImplementationDocumentationMutation.mutateAsync({
+        clientId: activeClientId,
+        target: implementationExportTarget,
+      });
+      const url = result?.data.documentUrl;
+      if (!url) {
+        throw new Error("IMPLEMENTATION_DOCUMENTATION_EXPORT_EMPTY");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+      setImplementationAlertsError(null);
+    } catch (error) {
+      setImplementationAlertsError(
+        withRequestId("Nie udalo sie wyeksportowac dokumentacji.", extractRequestId(error)),
+      );
+    } finally {
+      setImplementationExportLoading(false);
+    }
+  };
+
   const refreshAuditProductContext = async () => {
     if (!activeClientId) {
       setAuditProductContextError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1519,6 +1550,8 @@ export function ClientsWorkspace() {
             loading={implementationAlertsLoading}
             reportLoading={implementationReportLoading}
             documentationLoading={implementationDocumentationLoading}
+            exportLoading={implementationExportLoading || exportImplementationDocumentationMutation.isPending}
+            exportTarget={implementationExportTarget}
             error={implementationAlertsError}
             requestId={
               implementationAlertsQuery.data?.meta.requestId ??
@@ -1529,6 +1562,8 @@ export function ClientsWorkspace() {
             documentationMarkdown={implementationDocumentationMarkdown}
             onDownloadReport={downloadImplementationReport}
             onDownloadDocumentation={downloadImplementationDocumentation}
+            onExportTargetChange={setImplementationExportTarget}
+            onExportDocumentation={exportImplementationDocumentation}
           />
         </div>
         <div className="mt-4">
