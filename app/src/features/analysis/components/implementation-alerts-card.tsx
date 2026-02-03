@@ -5,11 +5,14 @@ import type { ImplementationAlerts } from "../contracts/analysis.schema";
 type ImplementationAlertsCardProps = {
   loading: boolean;
   reportLoading: boolean;
+  documentationLoading: boolean;
   error: string | null;
   requestId: string | null;
   alerts: ImplementationAlerts | null;
   reportMarkdown: string | null;
+  documentationMarkdown: string | null;
   onDownloadReport: () => void;
+  onDownloadDocumentation: () => void;
 };
 
 export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
@@ -47,6 +50,14 @@ export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
             className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             {props.reportLoading ? "Generowanie..." : "Pobierz raport wdrozeniowy"}
+          </button>
+          <button
+            type="button"
+            onClick={props.onDownloadDocumentation}
+            disabled={props.documentationLoading}
+            className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {props.documentationLoading ? "Generowanie..." : "Pobierz dokumentacje wdrozeniowa"}
           </button>
         </div>
       </div>
@@ -90,6 +101,12 @@ export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
       {props.reportMarkdown && (
         <pre className="mt-3 max-h-64 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
           {props.reportMarkdown}
+        </pre>
+      )}
+
+      {props.documentationMarkdown && (
+        <pre className="mt-3 max-h-64 overflow-auto rounded border border-sky-200 bg-sky-50 p-2 text-xs text-slate-700">
+          {props.documentationMarkdown}
         </pre>
       )}
     </section>

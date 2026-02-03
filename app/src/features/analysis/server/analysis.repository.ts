@@ -67,6 +67,15 @@ export type StrategyAuditRecord = {
   details: Prisma.JsonValue | null;
 };
 
+export type ClientAuditLogRecord = {
+  id: string;
+  requestId: string;
+  eventName: string;
+  createdAt: Date;
+  actorId: string | null;
+  details: Prisma.JsonValue | null;
+};
+
 export class AnalysisRepository {
   private readonly database: Database;
   private static readonly strategyLocks = new Map<string, Promise<void>>();
@@ -533,6 +542,25 @@ export class AnalysisRepository {
         id: true,
         requestId: true,
         createdAt: true,
+        details: true,
+      },
+    });
+  }
+
+  listLatestClientAuditLogs(clientId: string, limit = 20): Promise<ClientAuditLogRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        eventName: true,
+        createdAt: true,
+        actorId: true,
         details: true,
       },
     });

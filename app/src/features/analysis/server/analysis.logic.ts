@@ -11,6 +11,7 @@ import type {
   ImplementationAlerts,
   ImplementationAlert,
   ImplementationReport,
+  ImplementationDocumentation,
   ImplementationChecklistStep,
   ImplementationChecklistStepStatus,
   PersonalizedEmailDraft,
@@ -409,6 +410,19 @@ export interface GetImplementationReportInput {
 export interface GetImplementationReportOutput {
   data: {
     report: ImplementationReport;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GetImplementationDocumentationInput {
+  clientId: string;
+}
+
+export interface GetImplementationDocumentationOutput {
+  data: {
+    documentation: ImplementationDocumentation;
   };
   meta: {
     requestId: string;
@@ -2023,6 +2037,152 @@ export class AnalysisService {
           requestId,
           generatedAt,
           status: alerts.status,
+          markdown,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
+  async getImplementationDocumentation(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: GetImplementationDocumentationInput,
+  ): Promise<GetImplementationDocumentationOutput> {
+    const requestId = `implementation-documentation-${Date.now()}`;
+    await this.validateImplementationReadAccess(userId, role, input.clientId);
+
+    const [
+      contextRecord,
+      strategyRecords,
+      flowPlanRecords,
+      campaignRecords,
+      auditLogs,
+    ] = await Promise.all([
+      this.repository.findAuditProductContext(input.clientId),
+      this.repository.listLatestEmailStrategyAudit(input.clientId, 20),
+      this.repository.listLatestFlowPlanAudit(input.clientId, 20),
+      this.repository.listLatestCampaignCalendarAudit(input.clientId, 20),
+      this.repository.listLatestClientAuditLogs(input.clientId, 20),
+    ]);
+
+    const strategy = this.parseLatestEmailStrategy(strategyRecords ?? []);
+    const flowPlan = this.parseLatestFlowPlan(flowPlanRecords ?? []);
+    const campaignCalendar = this.parseLatestCampaignCalendar(campaignRecords ?? []);
+
+    const recommendations =
+      contextRecord?.mainProducts.map((productName) => {
+        const coverage = this.buildProductCoverageItem(productName, flowPlan, campaignCalendar);
+        return this.buildCommunicationImprovementRecommendationItem(coverage, requestId);
+      }) ?? [];
+    const sortedRecommendations = recommendations.sort((left, right) => {
+      const priorityDelta =
+        this.priorityWeight(right.priority) - this.priorityWeight(left.priority);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+      return right.impactScore - left.impactScore;
+    });
+
+    const markdown = [
+      "# Dokumentacja wdrozeniowa klienta",
+      "",
+      `- Generated at: ${new Date().toISOString()}`,
+      `- Request ID: ${requestId}`,
+      "",
+      "## Product Context",
+      contextRecord
+        ? [
+            `- Offer: ${contextRecord.offer ?? "brak"}`,
+            `- Target audience: ${contextRecord.targetAudience ?? "brak"}`,
+            `- Main products: ${contextRecord.mainProducts.join(", ") || "brak"}`,
+            `- Current flows: ${contextRecord.currentFlows.join(", ") || "brak"}`,
+            `- Goals: ${contextRecord.goals.join(", ") || "brak"}`,
+            `- Segments: ${contextRecord.segments.join(", ") || "brak"}`,
+          ]
+        : ["- Brak danych kontekstu produktu."],
+      "",
+      "## Strategy Summary",
+      strategy
+        ? [
+            `- Status: ${strategy.status}`,
+            `- Version: ${strategy.version}`,
+            `- Generated: ${strategy.generatedAt.toISOString()}`,
+            `- Goals: ${strategy.goals.join(", ") || "brak"}`,
+            `- Segments: ${strategy.segments.join(", ") || "brak"}`,
+            `- Priorities: ${strategy.priorities.join(", ") || "brak"}`,
+            `- KPIs: ${strategy.kpis.join(", ") || "brak"}`,
+          ]
+        : ["- Brak strategii."],
+      "",
+      "## Flow Plan",
+      flowPlan
+        ? [
+            `- Status: ${flowPlan.status}`,
+            `- Version: ${flowPlan.version}`,
+            `- Generated: ${flowPlan.generatedAt.toISOString()}`,
+            ...(flowPlan.items.length === 0
+              ? ["- [ ] Brak krokow flow."]
+              : flowPlan.items.map(
+                  (item) =>
+                    `- [ ] ${item.name} (${item.priority}) — trigger: ${item.trigger}, cel: ${item.objective}`,
+                )),
+          ]
+        : ["- Brak planu flow."],
+      "",
+      "## Campaign Calendar",
+      campaignCalendar
+        ? [
+            `- Status: ${campaignCalendar.status}`,
+            `- Version: ${campaignCalendar.version}`,
+            `- Generated: ${campaignCalendar.generatedAt.toISOString()}`,
+            ...(campaignCalendar.items.length === 0
+              ? ["- [ ] Brak kampanii."]
+              : campaignCalendar.items.map(
+                  (item) =>
+                    `- [ ] Week ${item.weekNumber}: ${item.title} (${item.campaignType}) — segment: ${item.segment}`,
+                )),
+          ]
+        : ["- Brak kalendarza kampanii."],
+      "",
+      "## Recommendations",
+      sortedRecommendations.length === 0
+        ? "- Brak rekomendacji."
+        : sortedRecommendations.map(
+            (item) =>
+              `- [ ] ${item.title} | status: ${item.status} | priority: ${item.priority} | impact: ${item.impactScore}`,
+          ),
+      "",
+      "## Audit Log",
+      auditLogs.length === 0
+        ? "- Brak wpisow audit log."
+        : auditLogs.slice(0, 10).map((log) => {
+            const details =
+              log.details && typeof log.details === "object"
+                ? (log.details as Record<string, unknown>)
+                : null;
+            const actionType =
+              details && typeof details.actionType === "string"
+                ? details.actionType
+                : log.eventName;
+            const actor =
+              details && typeof details.userId === "string"
+                ? details.userId
+                : (log.actorId ?? "system");
+            const artifactId =
+              details && typeof details.artifactId === "string"
+                ? details.artifactId
+                : log.requestId;
+            return `- ${log.createdAt.toISOString()} | ${actor} | ${actionType} | artifact: ${artifactId}`;
+          }),
+    ].flat().join("\n");
+
+    return {
+      data: {
+        documentation: {
+          clientId: input.clientId,
+          requestId,
+          generatedAt: new Date(),
           markdown,
         },
       },

@@ -114,6 +114,8 @@ export function ClientsWorkspace() {
   const [implementationAlertsLoading, setImplementationAlertsLoading] = useState(false);
   const [implementationReportLoading, setImplementationReportLoading] = useState(false);
   const [implementationReportMarkdown, setImplementationReportMarkdown] = useState<string | null>(null);
+  const [implementationDocumentationLoading, setImplementationDocumentationLoading] = useState(false);
+  const [implementationDocumentationMarkdown, setImplementationDocumentationMarkdown] = useState<string | null>(null);
   const [auditProductContextError, setAuditProductContextError] = useState<string | null>(null);
   const [auditProductContextLoading, setAuditProductContextLoading] = useState(false);
   const [auditProductContextRefreshing, setAuditProductContextRefreshing] = useState(false);
@@ -286,6 +288,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const implementationDocumentationQuery = api.analysis.getImplementationDocumentation.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: false,
+      retry: false,
+    },
+  );
   const auditProductContextQuery = api.analysis.getAuditProductContext.useQuery(
     {
       clientId: activeClientId ?? "000000000000000000000000",
@@ -388,6 +399,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestImplementationChecklist.invalidate(),
       utils.analysis.getImplementationAlerts.invalidate(),
       utils.analysis.getImplementationReport.invalidate(),
+      utils.analysis.getImplementationDocumentation.invalidate(),
       utils.analysis.getAuditProductContext.invalidate(),
       utils.analysis.getProductCoverageAnalysis.invalidate(),
       utils.analysis.getCommunicationImprovementRecommendations.invalidate(),
@@ -1170,6 +1182,40 @@ export function ClientsWorkspace() {
     }
   };
 
+  const downloadImplementationDocumentation = async () => {
+    if (!activeClientId) {
+      setImplementationAlertsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setImplementationDocumentationLoading(true);
+    try {
+      const result = await implementationDocumentationQuery.refetch();
+      const markdown = result.data?.data.documentation.markdown;
+      if (!markdown) {
+        throw new Error("IMPLEMENTATION_DOCUMENTATION_EMPTY");
+      }
+      setImplementationDocumentationMarkdown(markdown);
+
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `implementation-documentation-${activeClientId}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setImplementationAlertsError(null);
+    } catch (error) {
+      setImplementationAlertsError(
+        withRequestId("Nie udalo sie pobrac dokumentacji wdrozeniowej.", extractRequestId(error)),
+      );
+    } finally {
+      setImplementationDocumentationLoading(false);
+    }
+  };
+
   const refreshAuditProductContext = async () => {
     if (!activeClientId) {
       setAuditProductContextError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1472,6 +1518,7 @@ export function ClientsWorkspace() {
           <ImplementationAlertsCard
             loading={implementationAlertsLoading}
             reportLoading={implementationReportLoading}
+            documentationLoading={implementationDocumentationLoading}
             error={implementationAlertsError}
             requestId={
               implementationAlertsQuery.data?.meta.requestId ??
@@ -1479,7 +1526,9 @@ export function ClientsWorkspace() {
             }
             alerts={implementationAlertsQuery.data?.data.alerts ?? null}
             reportMarkdown={implementationReportMarkdown}
+            documentationMarkdown={implementationDocumentationMarkdown}
             onDownloadReport={downloadImplementationReport}
+            onDownloadDocumentation={downloadImplementationDocumentation}
           />
         </div>
         <div className="mt-4">

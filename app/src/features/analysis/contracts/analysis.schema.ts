@@ -422,6 +422,15 @@ export const implementationReportSchema = z.object({
 export const getImplementationReportSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const implementationDocumentationSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  markdown: z.string().min(1),
+});
+export const getImplementationDocumentationSchema = z.object({
+  clientId: z.string().cuid(),
+});
 export const auditProductContextStatusSchema = z.enum([
   "ok",
   "missing_context",
@@ -518,6 +527,7 @@ export type GetLatestImplementationChecklistSchema = z.infer<typeof getLatestImp
 export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImplementationChecklistStepSchema>;
 export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
 export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
+export type GetImplementationDocumentationSchema = z.infer<typeof getImplementationDocumentationSchema>;
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
@@ -614,6 +624,7 @@ export type ImplementationAlertsStatus = z.infer<typeof implementationAlertsStat
 export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;
 export type ImplementationReportStatus = z.infer<typeof implementationReportStatusSchema>;
 export type ImplementationReport = z.infer<typeof implementationReportSchema>;
+export type ImplementationDocumentation = z.infer<typeof implementationDocumentationSchema>;
 export type AuditProductContextStatus = z.infer<typeof auditProductContextStatusSchema>;
 export type AuditProductContext = z.infer<typeof auditProductContextSchema>;
 export type ProductCoverageItemStatus = z.infer<typeof productCoverageItemStatusSchema>;

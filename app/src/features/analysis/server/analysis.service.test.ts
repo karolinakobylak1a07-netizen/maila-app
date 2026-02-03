@@ -32,6 +32,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestEmailDraftAudit: vi.fn(),
       listLatestPersonalizedEmailDraftAudit: vi.fn(),
       listLatestImplementationChecklistAudit: vi.fn(),
+      listLatestClientAuditLogs: vi.fn(),
       withStrategyGenerationLock: async <T>(_clientId: string, handler: () => Promise<T>) => handler(),
       withContentGenerationLock: async <T>(_lockKey: string, handler: () => Promise<T>) => handler(),
     };
@@ -2327,6 +2328,160 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.report.markdown).toContain("## at_risk");
       expect(result.data.report.markdown).toContain("## blockers");
       expect(result.data.report.markdown).toContain("- [x] Skonfigurowac flow welcome");
+    });
+  });
+
+  describe("implementation documentation generation (Story 6.6)", () => {
+    it("returns markdown documentation with required client sections", async () => {
+      const now = new Date("2026-02-21T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet pro"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "strategy-doc-1",
+          requestId: "strategy-doc-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 2,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-doc-1",
+            lastSyncRequestId: "sync-doc-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.email.generated",
+              type: "strategy",
+            },
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-doc-1",
+          requestId: "flow-doc-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Flow pakiet pro welcome",
+                trigger: "signup",
+                objective: "activate",
+                priority: "HIGH",
+                businessReason: "coverage",
+              },
+            ],
+            requestId: "flow-doc-1",
+            strategyRequestId: "strategy-doc-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.flow_plan.generated",
+              type: "flow",
+            },
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-doc-1",
+          requestId: "camp-doc-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "PROMO",
+                goal: "promocja pakiet pro",
+                segment: "VIP",
+                title: "Kampania pakiet pro",
+              },
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter",
+                segment: "VIP",
+                title: "Newsletter",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "retencja",
+                segment: "VIP",
+                title: "Lifecycle",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "edukacja",
+                segment: "VIP",
+                title: "Edu",
+              },
+            ],
+            requestId: "camp-doc-1",
+            strategyRequestId: "strategy-doc-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.campaign_calendar.generated",
+              type: "plan",
+            },
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "audit-doc-1",
+          requestId: "req-audit-doc-1",
+          eventName: "strategy.email.generated",
+          createdAt: now,
+          actorId: "u1",
+          details: {
+            actionType: "strategy.email.generated",
+            artifactId: "strategy-doc-1",
+            userId: "u1",
+          },
+        },
+      ]);
+
+      const result = await analysisService.getImplementationDocumentation("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.documentation.clientId).toBe("client-1");
+      expect(result.data.documentation.markdown).toContain("## Product Context");
+      expect(result.data.documentation.markdown).toContain("## Strategy Summary");
+      expect(result.data.documentation.markdown).toContain("## Flow Plan");
+      expect(result.data.documentation.markdown).toContain("## Campaign Calendar");
+      expect(result.data.documentation.markdown).toContain("## Recommendations");
+      expect(result.data.documentation.markdown).toContain("## Audit Log");
+      expect(result.data.documentation.markdown).toContain("strategy.email.generated");
     });
   });
 

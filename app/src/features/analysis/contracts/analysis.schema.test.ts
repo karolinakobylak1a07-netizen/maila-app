@@ -44,6 +44,8 @@ import {
   implementationReportSchema,
   implementationReportStatusSchema,
   getImplementationReportSchema,
+  implementationDocumentationSchema,
+  getImplementationDocumentationSchema,
   auditProductContextSchema,
   auditProductContextStatusSchema,
   getAuditProductContextSchema,
@@ -691,6 +693,21 @@ describe('OptimizationArea Schema', () => {
     it('should validate getImplementationReport input', () => {
       expect(getImplementationReportSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getImplementationReportSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse implementation documentation payload', () => {
+      const result = implementationDocumentationSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'req-doc',
+        generatedAt: new Date('2026-02-20T12:00:00.000Z'),
+        markdown: '# Dokumentacja wdrozeniowa',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getImplementationDocumentation input', () => {
+      expect(getImplementationDocumentationSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getImplementationDocumentationSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
 
     it('should parse audit product context payload', () => {
