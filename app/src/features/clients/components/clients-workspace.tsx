@@ -36,6 +36,7 @@ import { CommunicationBriefCard } from "~/features/analysis/components/communica
 import { EmailDraftCard } from "~/features/analysis/components/email-draft-card";
 import { PersonalizedEmailDraftCard } from "~/features/analysis/components/personalized-email-draft-card";
 import { ImplementationChecklistCard } from "~/features/analysis/components/implementation-checklist-card";
+import { ImplementationAlertsCard } from "~/features/analysis/components/implementation-alerts-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -106,6 +107,8 @@ export function ClientsWorkspace() {
   const [implementationChecklistLoading, setImplementationChecklistLoading] = useState(false);
   const [implementationChecklistUpdatingStepId, setImplementationChecklistUpdatingStepId] =
     useState<string | null>(null);
+  const [implementationAlertsError, setImplementationAlertsError] = useState<string | null>(null);
+  const [implementationAlertsLoading, setImplementationAlertsLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -251,6 +254,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const implementationAlertsQuery = api.analysis.getImplementationAlerts.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -324,6 +336,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestEmailDraft.invalidate(),
       utils.analysis.getLatestPersonalizedEmailDraft.invalidate(),
       utils.analysis.getLatestImplementationChecklist.invalidate(),
+      utils.analysis.getImplementationAlerts.invalidate(),
     ]);
   };
 
@@ -839,6 +852,30 @@ export function ClientsWorkspace() {
     latestImplementationChecklistQuery.error,
   ]);
 
+  useEffect(() => {
+    if (implementationAlertsQuery.isLoading) {
+      setImplementationAlertsLoading(true);
+      setImplementationAlertsError(null);
+      return;
+    }
+
+    if (implementationAlertsQuery.isError) {
+      setImplementationAlertsLoading(false);
+      const requestId = extractRequestId(implementationAlertsQuery.error);
+      setImplementationAlertsError(
+        withRequestId("Nie udalo sie pobrac powiadomien wdrozeniowych.", requestId),
+      );
+      return;
+    }
+
+    setImplementationAlertsLoading(false);
+    setImplementationAlertsError(null);
+  }, [
+    implementationAlertsQuery.isLoading,
+    implementationAlertsQuery.isError,
+    implementationAlertsQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1212,6 +1249,17 @@ export function ClientsWorkspace() {
             checklist={latestImplementationChecklistQuery.data?.data.checklist ?? null}
             onGenerate={generateImplementationChecklist}
             onUpdateStep={updateImplementationChecklistStep}
+          />
+        </div>
+        <div className="mt-4">
+          <ImplementationAlertsCard
+            loading={implementationAlertsLoading}
+            error={implementationAlertsError}
+            requestId={
+              implementationAlertsQuery.data?.meta.requestId ??
+              extractRequestId(implementationAlertsQuery.error)
+            }
+            alerts={implementationAlertsQuery.data?.data.alerts ?? null}
           />
         </div>
         </div>

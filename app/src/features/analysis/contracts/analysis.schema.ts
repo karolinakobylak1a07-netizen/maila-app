@@ -349,6 +349,36 @@ export const updateImplementationChecklistStepSchema = z.object({
   expectedVersion: z.number().int().positive(),
   requestId: z.string().min(1).optional(),
 });
+export const implementationAlertTypeSchema = z.enum([
+  "blocker",
+  "configuration_gap",
+]);
+export const implementationAlertSeveritySchema = z.enum(["critical", "warning"]);
+export const implementationAlertSchema = z.object({
+  id: z.string().min(1),
+  type: implementationAlertTypeSchema,
+  severity: implementationAlertSeveritySchema,
+  title: z.string().min(1),
+  description: z.string().min(1),
+  source: z.string().min(1),
+});
+export const implementationAlertsStatusSchema = z.enum([
+  "ok",
+  "blocked",
+  "needs_configuration",
+]);
+export const implementationAlertsSchema = z.object({
+  clientId: z.string().cuid(),
+  status: implementationAlertsStatusSchema,
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  blockerCount: z.number().int().min(0),
+  configGapCount: z.number().int().min(0),
+  alerts: z.array(implementationAlertSchema),
+});
+export const getImplementationAlertsSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -369,6 +399,7 @@ export type GetLatestPersonalizedEmailDraftSchema = z.infer<typeof getLatestPers
 export type GenerateImplementationChecklistSchema = z.infer<typeof generateImplementationChecklistSchema>;
 export type GetLatestImplementationChecklistSchema = z.infer<typeof getLatestImplementationChecklistSchema>;
 export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImplementationChecklistStepSchema>;
+export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -452,3 +483,8 @@ export type ImplementationChecklistStepStatus = z.infer<typeof implementationChe
 export type ImplementationChecklistStatus = z.infer<typeof implementationChecklistStatusSchema>;
 export type ImplementationChecklistStep = z.infer<typeof implementationChecklistStepSchema>;
 export type ImplementationChecklist = z.infer<typeof implementationChecklistSchema>;
+export type ImplementationAlertType = z.infer<typeof implementationAlertTypeSchema>;
+export type ImplementationAlertSeverity = z.infer<typeof implementationAlertSeveritySchema>;
+export type ImplementationAlert = z.infer<typeof implementationAlertSchema>;
+export type ImplementationAlertsStatus = z.infer<typeof implementationAlertsStatusSchema>;
+export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;

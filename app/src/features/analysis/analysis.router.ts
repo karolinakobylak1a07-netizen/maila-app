@@ -23,6 +23,7 @@ import {
   generateImplementationChecklistSchema,
   getLatestImplementationChecklistSchema,
   updateImplementationChecklistStepSchema,
+  getImplementationAlertsSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -51,6 +52,7 @@ type AnalysisServiceContract = Pick<
   | "generateImplementationChecklist"
   | "getLatestImplementationChecklist"
   | "updateImplementationChecklistStep"
+  | "getImplementationAlerts"
 >;
 
 export const createAnalysisRouter = (
@@ -366,6 +368,20 @@ export const createAnalysisRouter = (
       .mutation(async ({ ctx, input }) => {
         try {
           return await analysisService.updateImplementationChecklistStep(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getImplementationAlerts: protectedProcedure
+      .input(getImplementationAlertsSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getImplementationAlerts(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
             input,

@@ -1684,4 +1684,84 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.checklist.steps[0]?.completedAt).toBeNull();
     });
   });
+
+  describe("implementation alerts (Story 5.2)", () => {
+    it("returns blocked status with blocker notifications (AC1)", async () => {
+      const now = new Date("2026-02-11T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "FAILED_AUTH",
+        requestId: "sync-err-1",
+        startedAt: now,
+        finishedAt: now,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.alerts.status).toBe("blocked");
+      expect(result.data.alerts.blockerCount).toBeGreaterThan(0);
+      expect(result.data.alerts.alerts.some((alert) => alert.id === "sync-failed-auth")).toBe(true);
+    });
+
+    it("returns needs_configuration when only GAP inventory is detected (AC2)", async () => {
+      const now = new Date("2026-02-11T12:10:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-ok-1",
+        startedAt: now,
+        finishedAt: now,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "flow-1", name: "Welcome", itemStatus: "GAP" },
+      ]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.alerts.status).toBe("needs_configuration");
+      expect(result.data.alerts.blockerCount).toBe(0);
+      expect(result.data.alerts.configGapCount).toBe(1);
+      expect(result.data.alerts.alerts[0]?.type).toBe("configuration_gap");
+    });
+
+    it("returns ok when no blockers and no configuration gaps (AC3)", async () => {
+      const now = new Date("2026-02-11T12:20:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-ok-2",
+        startedAt: now,
+        finishedAt: now,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "flow-1", name: "Welcome", itemStatus: "OK" },
+      ]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.alerts.status).toBe("ok");
+      expect(result.data.alerts.blockerCount).toBe(0);
+      expect(result.data.alerts.configGapCount).toBe(0);
+      expect(result.data.alerts.alerts).toHaveLength(0);
+    });
+  });
 });

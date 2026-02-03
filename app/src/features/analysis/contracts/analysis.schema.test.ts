@@ -35,6 +35,9 @@ import {
   implementationChecklistSchema,
   generateImplementationChecklistSchema,
   updateImplementationChecklistStepSchema,
+  implementationAlertsSchema,
+  implementationAlertsStatusSchema,
+  getImplementationAlertsSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -588,6 +591,37 @@ describe('OptimizationArea Schema', () => {
         status: 'done',
         expectedVersion: 0,
       }).success).toBe(false);
+    });
+
+    it('should parse implementation alerts payload and statuses', () => {
+      expect(implementationAlertsStatusSchema.safeParse('ok').success).toBe(true);
+      expect(implementationAlertsStatusSchema.safeParse('blocked').success).toBe(true);
+      expect(implementationAlertsStatusSchema.safeParse('needs_configuration').success).toBe(true);
+
+      const result = implementationAlertsSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        status: 'blocked',
+        requestId: 'req-alerts',
+        generatedAt: new Date('2026-02-11T12:00:00.000Z'),
+        blockerCount: 1,
+        configGapCount: 1,
+        alerts: [
+          {
+            id: 'alert-1',
+            type: 'blocker',
+            severity: 'critical',
+            title: 'Brak sync',
+            description: 'Uruchom sync',
+            source: 'sync',
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getImplementationAlerts input', () => {
+      expect(getImplementationAlertsSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getImplementationAlertsSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

@@ -1,0 +1,56 @@
+"use client";
+
+import type { ImplementationAlerts } from "../contracts/analysis.schema";
+
+type ImplementationAlertsCardProps = {
+  loading: boolean;
+  error: string | null;
+  requestId: string | null;
+  alerts: ImplementationAlerts | null;
+};
+
+export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-medium text-slate-900">Blokady i braki konfiguracji</h2>
+        {props.alerts && (
+          <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">
+            {props.alerts.blockerCount} blokad / {props.alerts.configGapCount} brakow
+          </span>
+        )}
+      </div>
+
+      {props.requestId && <p className="mb-2 text-xs text-slate-500">Request ID: {props.requestId}</p>}
+      {props.loading && <p className="text-sm text-slate-600">Ladowanie powiadomien...</p>}
+      {props.error && <p className="text-sm text-red-700">{props.error}</p>}
+
+      {!props.loading && !props.error && !props.alerts && (
+        <p className="text-sm text-slate-600">Brak danych o blokadach.</p>
+      )}
+
+      {!props.loading && !props.error && props.alerts && (
+        <div className="space-y-2 text-sm text-slate-700">
+          <p>
+            Status: <span className="font-medium">{props.alerts.status}</span>
+          </p>
+          {props.alerts.alerts.length === 0 ? (
+            <p>Brak aktywnych blokad i brakow konfiguracji.</p>
+          ) : (
+            <ul className="space-y-2">
+              {props.alerts.alerts.map((alert) => (
+                <li key={alert.id} className="rounded border border-slate-200 p-2">
+                  <p className="font-medium">{alert.title}</p>
+                  <p>{alert.description}</p>
+                  <p className="text-xs text-slate-500">
+                    {alert.type} • {alert.severity} • source: {alert.source}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}

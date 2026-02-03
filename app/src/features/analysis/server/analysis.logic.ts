@@ -7,6 +7,8 @@ import type {
   CommunicationBrief,
   EmailDraft,
   ImplementationChecklist,
+  ImplementationAlerts,
+  ImplementationAlert,
   ImplementationChecklistStep,
   ImplementationChecklistStepStatus,
   PersonalizedEmailDraft,
@@ -374,6 +376,19 @@ export interface UpdateImplementationChecklistStepOutput {
   meta: {
     requestId: string;
     updatedAt: Date;
+  };
+}
+
+export interface GetImplementationAlertsInput {
+  clientId: string;
+}
+
+export interface GetImplementationAlertsOutput {
+  data: {
+    alerts: ImplementationAlerts;
+  };
+  meta: {
+    requestId: string;
   };
 }
 
@@ -1541,6 +1556,122 @@ export class AnalysisService {
     return {
       data: { checklist: updatedChecklist },
       meta: { requestId, updatedAt: updatedChecklist.updatedAt },
+    };
+  }
+
+  async getImplementationAlerts(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: GetImplementationAlertsInput,
+  ): Promise<GetImplementationAlertsOutput> {
+    const requestId = `implementation-alerts-${Date.now()}`;
+    await this.validateImplementationReadAccess(userId, role, input.clientId);
+
+    const [syncRun, inventory, checklistRecords] = await Promise.all([
+      this.repository.findLatestSyncRun(input.clientId),
+      this.repository.listInventory(input.clientId),
+      this.repository.listLatestImplementationChecklistAudit(input.clientId, 20),
+    ]);
+
+    const alerts: ImplementationAlert[] = [];
+    if (!syncRun) {
+      alerts.push({
+        id: "sync-missing",
+        type: "blocker",
+        severity: "critical",
+        title: "Brak synchronizacji danych",
+        description: "Uruchom sync Klaviyo przed wdrozeniem checklisty.",
+        source: "sync",
+      });
+    } else {
+      if (syncRun.status === "FAILED_AUTH") {
+        alerts.push({
+          id: "sync-failed-auth",
+          type: "blocker",
+          severity: "critical",
+          title: "Blokada: autoryzacja Klaviyo niepowiodla sie",
+          description: "Popraw token API i ponow synchronizacje.",
+          source: "sync",
+        });
+      }
+
+      if (syncRun.status === "PARTIAL_OR_TIMEOUT") {
+        alerts.push({
+          id: "sync-timeout",
+          type: "blocker",
+          severity: "warning",
+          title: "Sync zakonczony czesciowo",
+          description: "Powtorz synchronizacje przed wdrozeniem.",
+          source: "sync",
+        });
+      }
+    }
+
+    const staleReference = syncRun?.finishedAt ?? syncRun?.startedAt ?? null;
+    if (staleReference && Date.now() - staleReference.getTime() > 24 * 60 * 60 * 1000) {
+      alerts.push({
+        id: "sync-stale",
+        type: "blocker",
+        severity: "warning",
+        title: "Dane sync sa nieaktualne",
+        description: "Od ostatniej synchronizacji minelo ponad 24h.",
+        source: "sync",
+      });
+    }
+
+    const configurationGapItems = inventory
+      .filter((item) => item.itemStatus === "GAP")
+      .slice(0, 5)
+      .map((item, index) => ({
+        id: `config-gap-${index + 1}-${item.externalId}`,
+        type: "configuration_gap" as const,
+        severity: "warning" as const,
+        title: `Brak konfiguracji: ${item.name}`,
+        description: `Element ${item.entityType} wymaga uzupelnienia przed wdrozeniem.`,
+        source: "inventory",
+      }));
+    alerts.push(...configurationGapItems);
+
+    const checklist = this.parseLatestImplementationChecklist(checklistRecords);
+    if (checklist?.status === "conflict_requires_refresh") {
+      alerts.push({
+        id: "checklist-conflict",
+        type: "blocker",
+        severity: "warning",
+        title: "Konflikt wersji checklisty",
+        description: "Odswiez checkliste przed kolejnym zapisem zmian.",
+        source: "implementation_checklist",
+      });
+    }
+    if (checklist?.status === "transaction_error") {
+      alerts.push({
+        id: "checklist-transaction-error",
+        type: "blocker",
+        severity: "warning",
+        title: "Blad zapisu checklisty",
+        description: "Poprzedni stan zostal zachowany, ponow aktualizacje krokow.",
+        source: "implementation_checklist",
+      });
+    }
+
+    const blockerCount = alerts.filter((alert) => alert.type === "blocker").length;
+    const configGapCount = alerts.filter((alert) => alert.type === "configuration_gap").length;
+    const status =
+      blockerCount > 0 ? "blocked" : configGapCount > 0 ? "needs_configuration" : "ok";
+    const generatedAt = new Date();
+    return {
+      data: {
+        alerts: {
+          clientId: input.clientId,
+          status,
+          requestId,
+          generatedAt,
+          blockerCount,
+          configGapCount,
+          alerts,
+        },
+      },
+      meta: { requestId },
     };
   }
 
