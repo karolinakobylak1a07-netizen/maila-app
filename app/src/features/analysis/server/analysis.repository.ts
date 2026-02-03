@@ -61,6 +61,7 @@ export type StrategyAuditRecord = {
 export class AnalysisRepository {
   private readonly database: Database;
   private static readonly strategyLocks = new Map<string, Promise<void>>();
+  private static readonly contentLocks = new Map<string, Promise<void>>();
 
   constructor(database: Database) {
     this.database = database;
@@ -529,6 +530,31 @@ export class AnalysisRepository {
       release();
       if (AnalysisRepository.strategyLocks.get(key) === lockChain) {
         AnalysisRepository.strategyLocks.delete(key);
+      }
+    }
+  }
+
+  async withContentGenerationLock<T>(
+    lockKey: string,
+    handler: () => Promise<T>,
+  ): Promise<T> {
+    const key = `content:${lockKey}`;
+    const previous = AnalysisRepository.contentLocks.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const lockChain = previous.then(() => current);
+    AnalysisRepository.contentLocks.set(key, lockChain);
+
+    await previous;
+    try {
+      // TODO(4.4): replace with tx-scoped repository calls for real row-level SELECT FOR UPDATE semantics.
+      return await this.database.$transaction(async () => handler());
+    } finally {
+      release();
+      if (AnalysisRepository.contentLocks.get(key) === lockChain) {
+        AnalysisRepository.contentLocks.delete(key);
       }
     }
   }

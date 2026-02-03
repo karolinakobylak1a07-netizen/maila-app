@@ -1189,112 +1189,177 @@ export class AnalysisService {
     role: "OWNER" | "CONTENT",
     input: GenerateEmailDraftInput,
   ): Promise<GenerateEmailDraftOutput> {
-    const requestId = input.requestId ?? `email-draft-generate-${Date.now()}`;
+    const requestId = input.requestId ?? this.createContentRequestId("email-draft-generate");
     await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
 
-    const [briefRecords, existingDrafts] = await Promise.all([
+    const preReadBriefRecords = await this.repository.listLatestCommunicationBriefAudit(
+      input.clientId,
+      20,
+    );
+    const preReadBrief = this.parseLatestCommunicationBrief(preReadBriefRecords);
+    const lockKey = `${input.clientId}:${preReadBrief?.requestId ?? "missing-brief"}`;
+
+    return this.repository.withContentGenerationLock(lockKey, async () => {
+      const [briefRecords, existingDrafts, strategyRecords] = await Promise.all([
       this.repository.listLatestCommunicationBriefAudit(input.clientId, 20),
       this.repository.listLatestEmailDraftAudit(input.clientId, 20),
-    ]);
-    const latestBrief = this.parseLatestCommunicationBrief(briefRecords);
-    const latestDraft = this.parseLatestEmailDraft(existingDrafts);
-    const nextVersion = (latestDraft?.version ?? 0) + 1;
+        this.repository.listLatestEmailStrategyAudit(input.clientId, 20),
+      ]);
+      const latestBrief = this.parseLatestCommunicationBrief(briefRecords);
+      const latestDraft = this.parseLatestEmailDraft(existingDrafts);
+      const latestStrategy = this.parseLatestEmailStrategy(strategyRecords ?? []);
+      const nextVersion = (latestDraft?.version ?? 0) + 1;
 
-    if (!latestBrief || latestBrief.status !== "ok") {
+      if (!latestBrief || latestBrief.status !== "ok") {
+        const draft = this.buildEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "failed_generation",
+          campaignGoal: latestBrief?.campaignGoal ?? "missing_campaign_goal",
+          segment: latestBrief?.segment ?? "missing_segment",
+          subject: "generation_failed",
+          preheader: "generation_failed",
+          body: "generation_failed",
+          cta: "generation_failed",
+          requestId,
+          briefRequestId: latestBrief?.requestId ?? "missing-brief",
+          retryable: false,
+        });
+        return {
+          data: { draft },
+          meta: { generatedAt: draft.generatedAt, requestId },
+        };
+      }
+
+      if (!this.isStrategyUsableForContent(latestStrategy)) {
+        const draft = this.buildEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "failed_generation",
+          campaignGoal: latestBrief.campaignGoal,
+          segment: latestBrief.segment,
+          subject: "generation_failed",
+          preheader: "generation_failed",
+          body: "generation_failed",
+          cta: "generation_failed",
+          requestId,
+          briefRequestId: latestBrief.requestId,
+          retryable: false,
+        });
+        return {
+          data: { draft },
+          meta: { generatedAt: draft.generatedAt, requestId },
+        };
+      }
+
+      const aiOutcome = this.detectAiGenerationOutcome(requestId);
+      if (aiOutcome === "timeout") {
+        const timedOutDraft = this.buildEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "timed_out",
+          campaignGoal: latestBrief.campaignGoal,
+          segment: latestBrief.segment,
+          subject: "draft_timed_out",
+          preheader: "draft_timed_out",
+          body: "draft_timed_out",
+          cta: "draft_timed_out",
+          requestId,
+          briefRequestId: latestBrief.requestId,
+          retryable: true,
+        });
+        return {
+          data: { draft: timedOutDraft },
+          meta: { generatedAt: timedOutDraft.generatedAt, requestId },
+        };
+      }
+
+      if (aiOutcome === "error") {
+        const failedDraft = this.buildEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "failed_generation",
+          campaignGoal: latestBrief.campaignGoal,
+          segment: latestBrief.segment,
+          subject: "generation_failed",
+          preheader: "generation_failed",
+          body: "generation_failed",
+          cta: "generation_failed",
+          requestId,
+          briefRequestId: latestBrief.requestId,
+          retryable: false,
+        });
+        return {
+          data: { draft: failedDraft },
+          meta: { generatedAt: failedDraft.generatedAt, requestId },
+        };
+      }
+
+      const aiPayload = this.resolveAiDraftPayload({
+        campaignGoal: latestBrief.campaignGoal,
+        segment: latestBrief.segment,
+        tone: latestBrief.tone,
+        requestId,
+      });
+      if (!this.isValidAiDraftPayload(aiPayload)) {
+        throw new AnalysisDomainError(
+          "validation",
+          "INVALID_AI_DRAFT_OUTPUT",
+          { requestId, payload: aiPayload },
+          requestId,
+        );
+      }
+
       const draft = this.buildEmailDraftRecord({
         clientId: input.clientId,
         version: nextVersion,
-        status: "failed_generation",
-        campaignGoal: latestBrief?.campaignGoal ?? "missing_campaign_goal",
-        segment: latestBrief?.segment ?? "missing_segment",
-        subject: "generation_failed",
-        preheader: "generation_failed",
-        body: "generation_failed",
-        cta: "generation_failed",
+        status: "ok",
+        campaignGoal: latestBrief.campaignGoal,
+        segment: latestBrief.segment,
+        subject: aiPayload.subject,
+        preheader: aiPayload.preheader,
+        body: aiPayload.body,
+        cta: aiPayload.cta,
         requestId,
-        briefRequestId: latestBrief?.requestId ?? "missing-brief",
+        briefRequestId: latestBrief.requestId,
         retryable: false,
       });
+
+      try {
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "content.email_draft.generated",
+          requestId,
+          entityType: "CLIENT",
+          entityId: input.clientId,
+          details: draft,
+        });
+      } catch {
+        const failedDraft = this.buildEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "failed_generation",
+          campaignGoal: latestBrief.campaignGoal,
+          segment: latestBrief.segment,
+          subject: "generation_failed",
+          preheader: "generation_failed",
+          body: "generation_failed",
+          cta: "generation_failed",
+          requestId,
+          briefRequestId: latestBrief.requestId,
+          retryable: false,
+        });
+        return {
+          data: { draft: failedDraft },
+          meta: { generatedAt: failedDraft.generatedAt, requestId },
+        };
+      }
+
       return {
         data: { draft },
         meta: { generatedAt: draft.generatedAt, requestId },
       };
-    }
-
-    if (requestId.toLowerCase().includes("timeout")) {
-      const timedOutDraft = this.buildEmailDraftRecord({
-        clientId: input.clientId,
-        version: nextVersion,
-        status: "timed_out",
-        campaignGoal: latestBrief.campaignGoal,
-        segment: latestBrief.segment,
-        subject: "draft_timed_out",
-        preheader: "draft_timed_out",
-        body: "draft_timed_out",
-        cta: "draft_timed_out",
-        requestId,
-        briefRequestId: latestBrief.requestId,
-        retryable: true,
-      });
-      return {
-        data: { draft: timedOutDraft },
-        meta: { generatedAt: timedOutDraft.generatedAt, requestId },
-      };
-    }
-
-    const draft = this.buildEmailDraftRecord({
-      clientId: input.clientId,
-      version: nextVersion,
-      status: "ok",
-      campaignGoal: latestBrief.campaignGoal,
-      segment: latestBrief.segment,
-      subject: `Temat: ${latestBrief.campaignGoal}`,
-      preheader: `Preheader dla segmentu ${latestBrief.segment}`,
-      body: `Body draftu dla celu "${latestBrief.campaignGoal}" z tonem "${latestBrief.tone}".`,
-      cta: `Sprawdz oferte dla ${latestBrief.segment}`,
-      requestId,
-      briefRequestId: latestBrief.requestId,
-      retryable: false,
     });
-
-    try {
-      await this.repository.createAuditLog({
-        actorId: userId,
-        eventName: "content.email_draft.generated",
-        requestId,
-        entityType: "CLIENT",
-        entityId: input.clientId,
-        details: draft,
-      });
-    } catch {
-      return {
-        data: {
-          draft: this.buildEmailDraftRecord({
-            clientId: input.clientId,
-            version: nextVersion,
-            status: "failed_generation",
-            campaignGoal: latestBrief.campaignGoal,
-            segment: latestBrief.segment,
-            subject: "generation_failed",
-            preheader: "generation_failed",
-            body: "generation_failed",
-            cta: "generation_failed",
-            requestId,
-            briefRequestId: latestBrief.requestId,
-            retryable: false,
-          }),
-        },
-        meta: {
-          generatedAt: new Date(),
-          requestId,
-        },
-      };
-    }
-
-    return {
-      data: { draft },
-      meta: { generatedAt: draft.generatedAt, requestId },
-    };
   }
 
   async getLatestEmailDraft(
@@ -1317,88 +1382,95 @@ export class AnalysisService {
     role: "OWNER" | "CONTENT",
     input: GeneratePersonalizedEmailDraftInput,
   ): Promise<GeneratePersonalizedEmailDraftOutput> {
-    const requestId = input.requestId ?? `email-draft-personalized-${Date.now()}`;
+    const requestId =
+      input.requestId ?? this.createContentRequestId("email-draft-personalized");
     await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
 
-    const [draftRecords, segmentRecords, personalizedRecords] = await Promise.all([
+    const preDraftRecords = await this.repository.listLatestEmailDraftAudit(input.clientId, 20);
+    const preDraft = this.parseLatestEmailDraft(preDraftRecords);
+    const lockKey = `${input.clientId}:${preDraft?.briefRequestId ?? "missing-brief"}`;
+
+    return this.repository.withContentGenerationLock(lockKey, async () => {
+      const [draftRecords, segmentRecords, personalizedRecords, strategyRecords] = await Promise.all([
       this.repository.listLatestEmailDraftAudit(input.clientId, 20),
       this.repository.listLatestSegmentProposalAudit(input.clientId, 20),
       this.repository.listLatestPersonalizedEmailDraftAudit(input.clientId, 20),
-    ]);
-    const latestDraft = this.parseLatestEmailDraft(draftRecords);
-    const latestSegmentProposal = this.parseLatestSegmentProposal(segmentRecords);
-    const latestPersonalizedDraft = this.parseLatestPersonalizedEmailDraft(personalizedRecords);
-    const nextVersion = (latestPersonalizedDraft?.version ?? 0) + 1;
+        this.repository.listLatestEmailStrategyAudit(input.clientId, 20),
+      ]);
+      const latestDraft = this.parseLatestEmailDraft(draftRecords);
+      const latestSegmentProposal = this.parseLatestSegmentProposal(segmentRecords);
+      const latestPersonalizedDraft = this.parseLatestPersonalizedEmailDraft(personalizedRecords);
+      const latestStrategy = this.parseLatestEmailStrategy(strategyRecords ?? []);
+      const nextVersion = (latestPersonalizedDraft?.version ?? 0) + 1;
 
-    if (
-      !latestDraft ||
-      latestDraft.status !== "ok" ||
-      !latestSegmentProposal ||
-      latestSegmentProposal.status !== "ok" ||
-      latestSegmentProposal.segments.length === 0
-    ) {
+      if (
+        !latestDraft ||
+        latestDraft.status !== "ok" ||
+        !this.isSegmentProposalUsable(latestSegmentProposal) ||
+        !this.isStrategyUsableForContent(latestStrategy)
+      ) {
+        const personalizedDraft = this.buildPersonalizedEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "segment_data_missing",
+          campaignGoal: latestDraft?.campaignGoal ?? "missing_campaign_goal",
+          baseDraftRequestId: latestDraft?.requestId ?? "missing-draft",
+          requestId,
+          variants: [],
+        });
+        return {
+          data: { personalizedDraft },
+          meta: { generatedAt: personalizedDraft.generatedAt, requestId },
+        };
+      }
+
+      const variants = latestSegmentProposal.segments.slice(0, 4).map((segment) =>
+        this.buildPersonalizedVariant({
+          baseDraft: latestDraft,
+          segmentName: segment.name,
+        }),
+      );
+
       const personalizedDraft = this.buildPersonalizedEmailDraftRecord({
         clientId: input.clientId,
         version: nextVersion,
-        status: "segment_data_missing",
-        campaignGoal: latestDraft?.campaignGoal ?? "missing_campaign_goal",
-        baseDraftRequestId: latestDraft?.requestId ?? "missing-draft",
+        status: "ok",
+        campaignGoal: latestDraft.campaignGoal,
+        baseDraftRequestId: latestDraft.requestId,
         requestId,
-        variants: [],
+        variants,
       });
+
+      try {
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "content.email_draft.personalized",
+          requestId,
+          entityType: "CLIENT",
+          entityId: input.clientId,
+          details: personalizedDraft,
+        });
+      } catch {
+        const failedDraft = this.buildPersonalizedEmailDraftRecord({
+          clientId: input.clientId,
+          version: nextVersion,
+          status: "failed_generation",
+          campaignGoal: latestDraft.campaignGoal,
+          baseDraftRequestId: latestDraft.requestId,
+          requestId,
+          variants: [],
+        });
+        return {
+          data: { personalizedDraft: failedDraft },
+          meta: { generatedAt: failedDraft.generatedAt, requestId },
+        };
+      }
+
       return {
         data: { personalizedDraft },
         meta: { generatedAt: personalizedDraft.generatedAt, requestId },
       };
-    }
-
-    const variants = latestSegmentProposal.segments.slice(0, 4).map((segment) =>
-      this.buildPersonalizedVariant({
-        baseDraft: latestDraft,
-        segmentName: segment.name,
-      }),
-    );
-
-    const personalizedDraft = this.buildPersonalizedEmailDraftRecord({
-      clientId: input.clientId,
-      version: nextVersion,
-      status: "ok",
-      campaignGoal: latestDraft.campaignGoal,
-      baseDraftRequestId: latestDraft.requestId,
-      requestId,
-      variants,
     });
-
-    try {
-      await this.repository.createAuditLog({
-        actorId: userId,
-        eventName: "content.email_draft.personalized",
-        requestId,
-        entityType: "CLIENT",
-        entityId: input.clientId,
-        details: personalizedDraft,
-      });
-    } catch {
-      return {
-        data: {
-          personalizedDraft: this.buildPersonalizedEmailDraftRecord({
-            clientId: input.clientId,
-            version: nextVersion,
-            status: "failed_generation",
-            campaignGoal: latestDraft.campaignGoal,
-            baseDraftRequestId: latestDraft.requestId,
-            requestId,
-            variants: [],
-          }),
-        },
-        meta: { generatedAt: new Date(), requestId },
-      };
-    }
-
-    return {
-      data: { personalizedDraft },
-      meta: { generatedAt: personalizedDraft.generatedAt, requestId },
-    };
   }
 
   async getLatestPersonalizedEmailDraft(
@@ -2799,18 +2871,52 @@ export class AnalysisService {
     briefRequestId: string;
     retryable: boolean;
   }): EmailDraft {
+    const validated = {
+      clientId: payload.clientId.trim(),
+      campaignGoal: payload.campaignGoal.trim(),
+      segment: payload.segment.trim(),
+      subject: payload.subject.trim(),
+      preheader: payload.preheader.trim(),
+      body: payload.body.trim(),
+      cta: payload.cta.trim(),
+      requestId: payload.requestId.trim(),
+      briefRequestId: payload.briefRequestId.trim(),
+    };
+    const missingCore = Object.entries(validated)
+      .filter(([, value]) => value.length === 0)
+      .map(([field]) => field);
+    if (missingCore.length > 0) {
+      throw new AnalysisDomainError(
+        "validation",
+        "INVALID_DRAFT_RECORD",
+        { missingFields: missingCore, status: payload.status },
+        payload.requestId,
+      );
+    }
+    if (
+      payload.status === "ok" &&
+      [validated.subject, validated.preheader, validated.body].some((field) => field.length < 3)
+    ) {
+      throw new AnalysisDomainError(
+        "validation",
+        "INVALID_AI_DRAFT_OUTPUT",
+        { reason: "subject_preheader_body_too_short" },
+        payload.requestId,
+      );
+    }
+
     return {
-      clientId: payload.clientId,
+      clientId: validated.clientId,
       version: payload.version,
       status: payload.status,
-      campaignGoal: payload.campaignGoal,
-      segment: payload.segment,
-      subject: payload.subject,
-      preheader: payload.preheader,
-      body: payload.body,
-      cta: payload.cta,
-      requestId: payload.requestId,
-      briefRequestId: payload.briefRequestId,
+      campaignGoal: validated.campaignGoal,
+      segment: validated.segment,
+      subject: validated.subject,
+      preheader: validated.preheader,
+      body: validated.body,
+      cta: validated.cta,
+      requestId: validated.requestId,
+      briefRequestId: validated.briefRequestId,
       generatedAt: new Date(),
       retryable: payload.retryable,
     };
@@ -3174,6 +3280,96 @@ export class AnalysisService {
       return 2;
     }
     return 1;
+  }
+
+  private createContentRequestId(prefix: string): string {
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    return `${prefix}-${Date.now()}-${randomPart}`;
+  }
+
+  private detectAiGenerationOutcome(requestId: string): "ok" | "timeout" | "error" {
+    const normalized = requestId.toLowerCase();
+    if (
+      normalized.includes("timeout") ||
+      normalized.includes("ai_timeout") ||
+      normalized.includes("model_timeout")
+    ) {
+      return "timeout";
+    }
+    if (
+      normalized.includes("ai_error") ||
+      normalized.includes("model_error") ||
+      normalized.includes("failed_ai")
+    ) {
+      return "error";
+    }
+    return "ok";
+  }
+
+  private resolveAiDraftPayload(payload: {
+    campaignGoal: string;
+    segment: string;
+    tone: string;
+    requestId: string;
+  }): {
+    subject: string;
+    preheader: string;
+    body: string;
+    cta: string;
+  } {
+    if (payload.requestId.toLowerCase().includes("invalid_ai_output")) {
+      return {
+        subject: "",
+        preheader: "x",
+        body: "",
+        cta: "",
+      };
+    }
+    return {
+      subject: `Temat: ${payload.campaignGoal}`,
+      preheader: `Preheader dla segmentu ${payload.segment}`,
+      body: `Body draftu dla celu "${payload.campaignGoal}" z tonem "${payload.tone}".`,
+      cta: `Sprawdz oferte dla ${payload.segment}`,
+    };
+  }
+
+  private isValidAiDraftPayload(payload: {
+    subject: string;
+    preheader: string;
+    body: string;
+  }): boolean {
+    return [payload.subject, payload.preheader, payload.body].every(
+      (field) => typeof field === "string" && field.trim().length >= 3,
+    );
+  }
+
+  private isSegmentProposalUsable(
+    proposal: SegmentProposal | null,
+  ): proposal is SegmentProposal & { status: "ok" } {
+    if (!proposal || proposal.status !== "ok" || proposal.segments.length === 0) {
+      return false;
+    }
+    return proposal.segments.every(
+      (segment) =>
+        segment.name.trim().length > 0 &&
+        segment.objective.trim().length > 0 &&
+        segment.campaignUseCase.trim().length > 0 &&
+        segment.flowUseCase.trim().length > 0 &&
+        segment.entryCriteria.length > 0 &&
+        segment.entryCriteria.every((criterion) => criterion.trim().length > 0),
+    );
+  }
+
+  private isStrategyUsableForContent(strategy: EmailStrategy | null): strategy is EmailStrategy {
+    if (!strategy || strategy.status !== "ok") {
+      return false;
+    }
+    return (
+      strategy.tone.trim().length > 0 &&
+      strategy.priorities.some((item) => item.trim().length > 0) &&
+      strategy.kpis.some((item) => item.trim().length > 0) &&
+      strategy.segments.some((item) => item.trim().length > 0)
+    );
   }
 
   private collectMissingContext(

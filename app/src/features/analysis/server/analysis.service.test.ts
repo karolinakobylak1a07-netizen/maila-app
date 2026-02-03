@@ -32,6 +32,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestPersonalizedEmailDraftAudit: vi.fn(),
       listLatestImplementationChecklistAudit: vi.fn(),
       withStrategyGenerationLock: async <T>(_clientId: string, handler: () => Promise<T>) => handler(),
+      withContentGenerationLock: async <T>(_lockKey: string, handler: () => Promise<T>) => handler(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -1237,6 +1238,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
           },
         },
       ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-email-1",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
       mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([]);
       mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
 
@@ -1281,6 +1303,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
           },
         },
       ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-email-2",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Retencja"],
+            segments: ["Powracajacy"],
+            tone: "konkretny",
+            priorities: ["Retention"],
+            kpis: ["repeat_purchase_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
       mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([]);
 
       const result = await analysisService.generateEmailDraft("u1", "CONTENT", {
@@ -1320,6 +1363,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
           },
         },
       ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-email-3",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Retencja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Retention"],
+            kpis: ["repeat_purchase_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
       mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([]);
       mockRepository.createAuditLog = vi.fn().mockRejectedValue(new Error("api_failure"));
 
@@ -1331,6 +1395,167 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.draft.status).toBe("failed_generation");
       expect(result.data.draft.requestId).toBe("draft-req-3");
       expect(result.data.draft.retryable).toBe(false);
+    });
+
+    it("serializes concurrent draft generation and increments version without collisions (Epic 4.4 regression)", async () => {
+      const now = new Date("2026-02-08T13:00:00.000Z");
+      const auditDrafts: Array<{ version: number; requestId: string }> = [];
+      let queue = Promise.resolve();
+
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.withContentGenerationLock = (vi.fn(
+        async <T>(_lockKey: string, handler: () => Promise<T>) => {
+          const run = queue.then(handler, handler);
+          queue = run.then(() => undefined, () => undefined);
+          return run;
+        },
+      ) as AnalysisRepository["withContentGenerationLock"]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([
+        {
+          id: "b-concurrency",
+          requestId: "brief-c-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            tone: "konkretny",
+            priority: "Welcome",
+            kpi: "conversion_rate",
+            requestId: "brief-c-1",
+            strategyRequestId: "strategy-c-1",
+            generatedAt: now.toISOString(),
+            missingFields: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-concurrency",
+          requestId: "strategy-c-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-c-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi
+        .fn()
+        .mockImplementation(async () =>
+          auditDrafts
+            .map((draft, index) => ({
+              id: `d-${index + 1}`,
+              requestId: draft.requestId,
+              createdAt: now,
+              details: {
+                clientId: "client-1",
+                version: draft.version,
+                status: "ok",
+                campaignGoal: "Aktywacja",
+                segment: "VIP",
+                subject: "Temat",
+                preheader: "Preheader",
+                body: "Body",
+                cta: "CTA",
+                requestId: draft.requestId,
+                briefRequestId: "brief-c-1",
+                generatedAt: now.toISOString(),
+                retryable: false,
+              },
+            }))
+            .reverse(),
+        );
+      mockRepository.createAuditLog = vi.fn().mockImplementation(async (payload: { requestId: string; details: { version: number } }) => {
+        auditDrafts.push({ version: payload.details.version, requestId: payload.requestId });
+      });
+
+      const [first, second] = await Promise.all([
+        analysisService.generateEmailDraft("u1", "CONTENT", {
+          clientId: "client-1",
+          requestId: "draft-concurrent-1",
+        }),
+        analysisService.generateEmailDraft("u1", "CONTENT", {
+          clientId: "client-1",
+          requestId: "draft-concurrent-2",
+        }),
+      ]);
+
+      const versions = [first.data.draft.version, second.data.draft.version].sort((a, b) => a - b);
+      expect(versions).toEqual([1, 2]);
+    });
+
+    it("throws validation envelope for invalid AI draft payload", async () => {
+      const now = new Date("2026-02-08T14:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([
+        {
+          id: "b-invalid-ai",
+          requestId: "brief-invalid-ai",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            tone: "konkretny",
+            priority: "Welcome",
+            kpi: "conversion_rate",
+            requestId: "brief-invalid-ai",
+            strategyRequestId: "strategy-invalid-ai",
+            generatedAt: now.toISOString(),
+            missingFields: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-invalid-ai",
+          requestId: "strategy-invalid-ai",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-invalid-ai",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([]);
+
+      await expect(
+        analysisService.generateEmailDraft("u1", "CONTENT", {
+          clientId: "client-1",
+          requestId: "invalid_ai_output-1",
+        }),
+      ).rejects.toThrow(AnalysisDomainError);
     });
   });
 
@@ -1360,6 +1585,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
             briefRequestId: "brief-1",
             generatedAt: now.toISOString(),
             retryable: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-p-1",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
           },
         },
       ]);
@@ -1436,6 +1682,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
           },
         },
       ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-p-2",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
       mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
       mockRepository.listLatestPersonalizedEmailDraftAudit = vi.fn().mockResolvedValue([]);
 
@@ -1473,6 +1740,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
             briefRequestId: "brief-3",
             generatedAt: now.toISOString(),
             retryable: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-p-3",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
           },
         },
       ]);
