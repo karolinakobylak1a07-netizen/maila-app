@@ -34,6 +34,7 @@ import { CampaignCalendarCard } from "~/features/analysis/components/campaign-ca
 import { SegmentProposalCard } from "~/features/analysis/components/segment-proposal-card";
 import { CommunicationBriefCard } from "~/features/analysis/components/communication-brief-card";
 import { EmailDraftCard } from "~/features/analysis/components/email-draft-card";
+import { SmsCampaignDraftCard } from "~/features/analysis/components/sms-campaign-draft-card";
 import { PersonalizedEmailDraftCard } from "~/features/analysis/components/personalized-email-draft-card";
 import { ImplementationChecklistCard } from "~/features/analysis/components/implementation-checklist-card";
 import { ImplementationAlertsCard } from "~/features/analysis/components/implementation-alerts-card";
@@ -107,6 +108,10 @@ export function ClientsWorkspace() {
   const [communicationBriefLoading, setCommunicationBriefLoading] = useState(false);
   const [emailDraftError, setEmailDraftError] = useState<string | null>(null);
   const [emailDraftLoading, setEmailDraftLoading] = useState(false);
+  const [smsDraftError, setSmsDraftError] = useState<string | null>(null);
+  const [smsDraftLoading, setSmsDraftLoading] = useState(false);
+  const [smsDraftApproveLoading, setSmsDraftApproveLoading] = useState(false);
+  const [smsHistoryCampaignId, setSmsHistoryCampaignId] = useState("campaign-main");
   const [personalizedDraftError, setPersonalizedDraftError] = useState<string | null>(null);
   const [personalizedDraftLoading, setPersonalizedDraftLoading] = useState(false);
   const [implementationChecklistError, setImplementationChecklistError] = useState<string | null>(null);
@@ -268,6 +273,17 @@ export function ClientsWorkspace() {
     },
   );
   const generateEmailDraftMutation = api.analysis.generateEmailDraft.useMutation();
+  const smsDraftHistoryQuery = api.analysis.getSmsCampaignDraftHistory.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+      campaignId: smsHistoryCampaignId,
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateSmsDraftMutation = api.analysis.generateSmsCampaignDraft.useMutation();
   const latestPersonalizedDraftQuery = api.analysis.getLatestPersonalizedEmailDraft.useQuery(
     {
       clientId: activeClientId ?? "000000000000000000000000",
@@ -454,6 +470,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestSegmentProposal.invalidate(),
       utils.analysis.getLatestCommunicationBrief.invalidate(),
       utils.analysis.getLatestEmailDraft.invalidate(),
+      utils.analysis.getSmsCampaignDraftHistory.invalidate(),
       utils.analysis.getLatestPersonalizedEmailDraft.invalidate(),
       utils.analysis.getLatestImplementationChecklist.invalidate(),
       utils.analysis.getImplementationAlerts.invalidate(),
@@ -933,6 +950,24 @@ export function ClientsWorkspace() {
   }, [latestEmailDraftQuery.isLoading, latestEmailDraftQuery.isError, latestEmailDraftQuery.error]);
 
   useEffect(() => {
+    if (smsDraftHistoryQuery.isLoading) {
+      setSmsDraftLoading(true);
+      setSmsDraftError(null);
+      return;
+    }
+
+    if (smsDraftHistoryQuery.isError) {
+      setSmsDraftLoading(false);
+      const requestId = extractRequestId(smsDraftHistoryQuery.error);
+      setSmsDraftError(withRequestId("Nie udalo sie pobrac historii draftow SMS.", requestId));
+      return;
+    }
+
+    setSmsDraftLoading(false);
+    setSmsDraftError(null);
+  }, [smsDraftHistoryQuery.isLoading, smsDraftHistoryQuery.isError, smsDraftHistoryQuery.error]);
+
+  useEffect(() => {
     if (latestPersonalizedDraftQuery.isLoading) {
       setPersonalizedDraftLoading(true);
       setPersonalizedDraftError(null);
@@ -1235,6 +1270,65 @@ export function ClientsWorkspace() {
       setEmailDraftError(
         withRequestId("Nie udalo sie wygenerowac draftu email.", extractRequestId(error)),
       );
+    }
+  };
+
+  const generateSmsDraft = async (payload: {
+    campaignId: string;
+    campaignContext: string;
+    goals: string[];
+    tone: string;
+    timingPreferences: string;
+    style: "promotion" | "reminder" | "announcement";
+  }) => {
+    if (!activeClientId) {
+      setSmsDraftError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      setSmsHistoryCampaignId(payload.campaignId);
+      await generateSmsDraftMutation.mutateAsync({
+        clientId: activeClientId,
+        campaignId: payload.campaignId,
+        campaignContext: payload.campaignContext,
+        goals: payload.goals,
+        tone: payload.tone,
+        timingPreferences: payload.timingPreferences,
+        style: payload.style,
+      });
+      await refresh();
+    } catch (error) {
+      setSmsDraftError(
+        withRequestId("Nie udalo sie wygenerowac draftu SMS.", extractRequestId(error)),
+      );
+    }
+  };
+
+  const approveSmsDraft = async (artifactId: string) => {
+    if (!activeClientId) {
+      setSmsDraftError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setSmsDraftApproveLoading(true);
+    try {
+      await submitArtifactFeedbackMutation.mutateAsync({
+        clientId: activeClientId,
+        targetType: "draft",
+        artifactId,
+        sourceRequestId: artifactId,
+        rating: 5,
+        comment: "manual_accept_sms_draft",
+      });
+      setSmsDraftError(null);
+      await refresh();
+    } catch (error) {
+      setSmsDraftError(
+        withRequestId("Nie udalo sie zatwierdzic draftu SMS.", extractRequestId(error)),
+      );
+    } finally {
+      setSmsDraftApproveLoading(false);
     }
   };
 
@@ -1828,6 +1922,34 @@ export function ClientsWorkspace() {
             feedbackSubmitting={submitArtifactFeedbackMutation.isPending}
             onSubmitFeedback={async ({ artifactId, rating, comment }) => {
               await submitDraftFeedback(artifactId, rating, comment);
+            }}
+          />
+        </div>
+        <div className="mt-4">
+          <SmsCampaignDraftCard
+            loading={smsDraftLoading}
+            generating={generateSmsDraftMutation.isPending}
+            approving={smsDraftApproveLoading}
+            error={smsDraftError}
+            requestId={
+              generateSmsDraftMutation.data?.meta.requestId ??
+              smsDraftHistoryQuery.data?.meta.requestId ??
+              extractRequestId(smsDraftHistoryQuery.error)
+            }
+            draft={
+              generateSmsDraftMutation.data?.data.draft ??
+              smsDraftHistoryQuery.data?.data.history[0] ??
+              null
+            }
+            history={
+              generateSmsDraftMutation.data?.data.history ??
+              smsDraftHistoryQuery.data?.data.history ??
+              []
+            }
+            defaultCampaignId={smsHistoryCampaignId}
+            onGenerate={generateSmsDraft}
+            onApprove={async (draft) => {
+              await approveSmsDraft(draft.requestId);
             }}
           />
         </div>

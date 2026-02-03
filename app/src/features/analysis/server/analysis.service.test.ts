@@ -32,6 +32,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestSegmentProposalAudit: vi.fn(),
       listLatestCommunicationBriefAudit: vi.fn(),
       listLatestEmailDraftAudit: vi.fn(),
+      listLatestSmsCampaignDraftAudit: vi.fn(),
       listLatestPersonalizedEmailDraftAudit: vi.fn(),
       listLatestImplementationChecklistAudit: vi.fn(),
       listLatestClientAuditLogs: vi.fn(),
@@ -1678,6 +1679,126 @@ describe("AnalysisService.getOptimizationAreas", () => {
           requestId: "invalid_ai_output-1",
         }),
       ).rejects.toThrow(AnalysisDomainError);
+    });
+  });
+
+  describe("generateSmsCampaignDraft (Story 8.1)", () => {
+    it("generates sms draft with style CTA, length and history", async () => {
+      const now = new Date("2026-02-15T10:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestSmsCampaignDraftAudit = vi.fn().mockResolvedValue([
+        {
+          id: "sms-1",
+          requestId: "sms-old-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            campaignId: "camp-1",
+            userId: "u1",
+            requestId: "sms-old-1",
+            createdAt: now.toISOString(),
+            style: "reminder",
+            timing: "10:00",
+            cta: "Sprawdz teraz",
+            message: "Przypomnienie! Sprawdz nowa oferte.",
+            length: 35,
+            status: "ok",
+          },
+        },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateSmsCampaignDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        campaignId: "camp-1",
+        campaignContext: "Dzien darmowej dostawy",
+        goals: ["zwiekszenie konwersji"],
+        tone: "konkretny",
+        timingPreferences: "10:00",
+        style: "promotion",
+        requestId: "sms-new-1",
+      });
+
+      expect(result.data.draft.clientId).toBe("client-1");
+      expect(result.data.draft.campaignId).toBe("camp-1");
+      expect(result.data.draft.userId).toBe("u1");
+      expect(result.data.draft.cta).toBe("Kup teraz");
+      expect(result.data.draft.length).toBeLessThanOrEqual(160);
+      expect(result.data.history.length).toBe(2);
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "content.sms_campaign_draft.generated",
+          requestId: "sms-new-1",
+        }),
+      );
+    });
+
+    it("marks draft as too_long when source message exceeds 160 chars", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestSmsCampaignDraftAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateSmsCampaignDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        campaignId: "camp-1",
+        campaignContext: "X".repeat(120),
+        goals: ["Y".repeat(80)],
+        tone: "dynamiczny i bardzo szczegolowy",
+        timingPreferences: "13:00",
+        style: "announcement",
+        requestId: "sms-too-long-1",
+      });
+
+      expect(result.data.draft.status).toBe("too_long");
+      expect(result.data.draft.length).toBe(160);
+      expect(result.data.draft.message.length).toBe(160);
+      expect(result.data.history[0]?.requestId).toBe("sms-too-long-1");
+      expect(result.meta.requestId).toBe("sms-too-long-1");
+      expect(result.meta.generatedAt).toBeInstanceOf(Date);
+    });
+
+    it("returns campaign history list for sms drafts", async () => {
+      const now = new Date("2026-02-15T10:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestSmsCampaignDraftAudit = vi.fn().mockResolvedValue([
+        {
+          id: "sms-h-1",
+          requestId: "sms-h-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            campaignId: "camp-2",
+            userId: "u1",
+            requestId: "sms-h-1",
+            createdAt: now.toISOString(),
+            style: "announcement",
+            timing: "12:00",
+            cta: "Dowiedz sie wiecej",
+            message: "Nowosc! Test kampanii.",
+            length: 22,
+            status: "ok",
+          },
+        },
+      ]);
+
+      const result = await analysisService.getSmsCampaignDraftHistory("u1", "OWNER", {
+        clientId: "client-1",
+        campaignId: "camp-2",
+      });
+
+      expect(result.data.history).toHaveLength(1);
+      expect(result.data.history[0]?.campaignId).toBe("camp-2");
+      expect(result.data.history[0]?.style).toBe("announcement");
+      expect(typeof result.meta.requestId).toBe("string");
     });
   });
 

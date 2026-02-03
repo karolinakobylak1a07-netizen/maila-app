@@ -290,6 +290,42 @@ export const generateEmailDraftSchema = z.object({
 export const getLatestEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const smsCommunicationStyleSchema = z.enum([
+  "promotion",
+  "reminder",
+  "announcement",
+]);
+export const smsCampaignDraftStatusSchema = z.enum([
+  "ok",
+  "too_long",
+]);
+export const smsCampaignDraftSchema = z.object({
+  clientId: z.string().cuid(),
+  campaignId: z.string().min(1),
+  userId: z.string().min(1),
+  requestId: z.string().min(1),
+  createdAt: z.date(),
+  style: smsCommunicationStyleSchema,
+  timing: z.string().min(1),
+  cta: z.string().min(1),
+  message: z.string().min(1),
+  length: z.number().int().min(0),
+  status: smsCampaignDraftStatusSchema,
+});
+export const generateSmsCampaignDraftSchema = z.object({
+  clientId: z.string().cuid(),
+  campaignId: z.string().min(1),
+  campaignContext: z.string().min(1),
+  goals: z.array(z.string().min(1)).min(1),
+  tone: z.string().min(1),
+  timingPreferences: z.string().min(1),
+  style: smsCommunicationStyleSchema,
+  requestId: z.string().min(1).optional(),
+});
+export const getSmsCampaignDraftHistorySchema = z.object({
+  clientId: z.string().cuid(),
+  campaignId: z.string().min(1),
+});
 export const personalizedDraftStatusSchema = z.enum([
   "ok",
   "segment_data_missing",
@@ -708,6 +744,8 @@ export type GenerateCommunicationBriefSchema = z.infer<typeof generateCommunicat
 export type GetLatestCommunicationBriefSchema = z.infer<typeof getLatestCommunicationBriefSchema>;
 export type GenerateEmailDraftSchema = z.infer<typeof generateEmailDraftSchema>;
 export type GetLatestEmailDraftSchema = z.infer<typeof getLatestEmailDraftSchema>;
+export type GenerateSmsCampaignDraftSchema = z.infer<typeof generateSmsCampaignDraftSchema>;
+export type GetSmsCampaignDraftHistorySchema = z.infer<typeof getSmsCampaignDraftHistorySchema>;
 export type GeneratePersonalizedEmailDraftSchema = z.infer<typeof generatePersonalizedEmailDraftSchema>;
 export type GetLatestPersonalizedEmailDraftSchema = z.infer<typeof getLatestPersonalizedEmailDraftSchema>;
 export type GenerateImplementationChecklistSchema = z.infer<typeof generateImplementationChecklistSchema>;
@@ -803,6 +841,9 @@ export type CommunicationBriefStatus = z.infer<typeof communicationBriefStatusSc
 export type CommunicationBrief = z.infer<typeof communicationBriefSchema>;
 export type EmailDraftStatus = z.infer<typeof emailDraftStatusSchema>;
 export type EmailDraft = z.infer<typeof emailDraftSchema>;
+export type SmsCommunicationStyle = z.infer<typeof smsCommunicationStyleSchema>;
+export type SmsCampaignDraftStatus = z.infer<typeof smsCampaignDraftStatusSchema>;
+export type SmsCampaignDraft = z.infer<typeof smsCampaignDraftSchema>;
 export type PersonalizedDraftStatus = z.infer<typeof personalizedDraftStatusSchema>;
 export type PersonalizedDraftVariant = z.infer<typeof personalizedDraftVariantSchema>;
 export type PersonalizedEmailDraft = z.infer<typeof personalizedEmailDraftSchema>;

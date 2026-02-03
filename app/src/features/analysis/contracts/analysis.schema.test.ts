@@ -29,6 +29,11 @@ import {
   emailDraftSchema,
   emailDraftStatusSchema,
   generateEmailDraftSchema,
+  smsCommunicationStyleSchema,
+  smsCampaignDraftStatusSchema,
+  smsCampaignDraftSchema,
+  generateSmsCampaignDraftSchema,
+  getSmsCampaignDraftHistorySchema,
   personalizedEmailDraftSchema,
   personalizedDraftStatusSchema,
   generatePersonalizedEmailDraftSchema,
@@ -571,6 +576,68 @@ describe('OptimizationArea Schema', () => {
       expect(generateEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(generateEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000', manualAccept: true }).success).toBe(true);
       expect(generateEmailDraftSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse sms campaign draft payload and validate length/status', () => {
+      expect(smsCommunicationStyleSchema.safeParse('promotion').success).toBe(true);
+      expect(smsCampaignDraftStatusSchema.safeParse('ok').success).toBe(true);
+      expect(smsCampaignDraftStatusSchema.safeParse('too_long').success).toBe(true);
+
+      const result = smsCampaignDraftSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        campaignId: 'campaign-1',
+        userId: 'user-1',
+        requestId: 'req-sms-1',
+        createdAt: new Date('2026-02-14T09:00:00.000Z'),
+        style: 'announcement',
+        timing: '9:00',
+        cta: 'Dowiedz sie wiecej',
+        message: 'Nowosc! Sprawdz nasza nowa oferte.',
+        length: 35,
+        status: 'ok',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateSmsCampaignDraft input', () => {
+      const success = generateSmsCampaignDraftSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        campaignId: 'campaign-1',
+        campaignContext: 'Nowa kolekcja',
+        goals: ['wzrost sprzedazy'],
+        tone: 'dynamiczny',
+        timingPreferences: '9:00',
+        style: 'promotion',
+      });
+      const fail = generateSmsCampaignDraftSchema.safeParse({
+        clientId: 'invalid',
+        campaignId: '',
+        campaignContext: '',
+        goals: [],
+        tone: '',
+        timingPreferences: '',
+        style: 'promotion',
+      });
+
+      expect(success.success).toBe(true);
+      expect(fail.success).toBe(false);
+    });
+
+    it('should validate getSmsCampaignDraftHistory input', () => {
+      expect(
+        getSmsCampaignDraftHistorySchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          campaignId: 'campaign-1',
+        }).success,
+      ).toBe(true);
+
+      expect(
+        getSmsCampaignDraftHistorySchema.safeParse({
+          clientId: 'invalid',
+          campaignId: '',
+        }).success,
+      ).toBe(false);
     });
 
     it('should parse personalized draft statuses and payload', () => {

@@ -521,6 +521,28 @@ export class AnalysisRepository {
     });
   }
 
+  listLatestSmsCampaignDraftAudit(clientId: string, campaignId: string, limit = 20): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: "content.sms_campaign_draft.generated",
+        entityType: "CLIENT",
+        entityId: clientId,
+        details: {
+          path: ["campaignId"],
+          equals: campaignId,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
+      },
+    });
+  }
+
   listLatestImplementationChecklistAudit(
     clientId: string,
     limit = 20,

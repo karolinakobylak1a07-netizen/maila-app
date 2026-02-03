@@ -39,6 +39,8 @@ import type {
   PriorityLevel,
   ExpectedImpact,
   ConfidenceLevel,
+  SmsCampaignDraft,
+  SmsCommunicationStyle,
 } from "../contracts/analysis.schema";
 
 export class AnalysisDomainError extends Error {
@@ -316,6 +318,42 @@ export interface GenerateEmailDraftOutput {
 export interface GetLatestEmailDraftOutput {
   data: {
     draft: EmailDraft | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateSmsCampaignDraftInput {
+  clientId: string;
+  campaignId: string;
+  campaignContext: string;
+  goals: string[];
+  tone: string;
+  timingPreferences: string;
+  style: SmsCommunicationStyle;
+  requestId?: string;
+}
+
+export interface GetSmsCampaignDraftHistoryInput {
+  clientId: string;
+  campaignId: string;
+}
+
+export interface GenerateSmsCampaignDraftOutput {
+  data: {
+    draft: SmsCampaignDraft;
+    history: SmsCampaignDraft[];
+  };
+  meta: {
+    requestId: string;
+    generatedAt: Date;
+  };
+}
+
+export interface GetSmsCampaignDraftHistoryOutput {
+  data: {
+    history: SmsCampaignDraft[];
   };
   meta: {
     requestId: string;
@@ -1729,6 +1767,81 @@ export class AnalysisService {
     return {
       data: { draft },
       meta: { requestId },
+    };
+  }
+
+  async generateSmsCampaignDraft(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GenerateSmsCampaignDraftInput,
+  ): Promise<GenerateSmsCampaignDraftOutput> {
+    const requestId = input.requestId ?? this.createContentRequestId("sms-campaign-draft-generate");
+    await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
+
+    const existing = await this.repository.listLatestSmsCampaignDraftAudit(
+      input.clientId,
+      input.campaignId,
+      20,
+    );
+    const history = this.parseSmsCampaignDraftHistory(existing);
+    const draft = this.buildSmsCampaignDraftRecord({
+      clientId: input.clientId,
+      campaignId: input.campaignId,
+      userId,
+      requestId,
+      campaignContext: input.campaignContext,
+      goals: input.goals,
+      tone: input.tone,
+      timingPreferences: input.timingPreferences,
+      style: input.style,
+    });
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "content.sms_campaign_draft.generated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: this.enrichAuditDetails({
+        userId,
+        actionType: "content.sms_campaign_draft.generated",
+        artifactId: draft.requestId,
+        previous: history[0] ?? null,
+        current: draft,
+      }),
+    });
+
+    return {
+      data: {
+        draft,
+        history: [draft, ...history].slice(0, 10),
+      },
+      meta: {
+        requestId,
+        generatedAt: draft.createdAt,
+      },
+    };
+  }
+
+  async getSmsCampaignDraftHistory(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GetSmsCampaignDraftHistoryInput,
+  ): Promise<GetSmsCampaignDraftHistoryOutput> {
+    const requestId = `sms-campaign-draft-history-${Date.now()}`;
+    await this.validateContentBriefReadAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestSmsCampaignDraftAudit(
+      input.clientId,
+      input.campaignId,
+      20,
+    );
+    return {
+      data: {
+        history: this.parseSmsCampaignDraftHistory(records),
+      },
+      meta: {
+        requestId,
+      },
     };
   }
 
@@ -4935,6 +5048,126 @@ export class AnalysisService {
       }
     }
     return null;
+  }
+
+  private buildSmsCampaignDraftRecord(payload: {
+    clientId: string;
+    campaignId: string;
+    userId: string;
+    requestId: string;
+    campaignContext: string;
+    goals: string[];
+    tone: string;
+    timingPreferences: string;
+    style: SmsCommunicationStyle;
+  }): SmsCampaignDraft {
+    const cta = this.resolveSmsCta(payload.style);
+    const message = this.composeSmsMessage({
+      campaignContext: payload.campaignContext,
+      goals: payload.goals,
+      tone: payload.tone,
+      cta,
+      style: payload.style,
+    });
+    const trimmed = message.slice(0, 160);
+    return {
+      clientId: payload.clientId,
+      campaignId: payload.campaignId,
+      userId: payload.userId,
+      requestId: payload.requestId,
+      createdAt: new Date(),
+      style: payload.style,
+      timing: payload.timingPreferences,
+      cta,
+      message: trimmed,
+      length: trimmed.length,
+      status: message.length <= 160 ? "ok" : "too_long",
+    };
+  }
+
+  private parseSmsCampaignDraftHistory(records: Array<{ details: unknown }>): SmsCampaignDraft[] {
+    const items: SmsCampaignDraft[] = [];
+    for (const record of records) {
+      const parsed = this.parseSmsCampaignDraft(record.details);
+      if (parsed) {
+        items.push(parsed);
+      }
+    }
+    return items;
+  }
+
+  private parseSmsCampaignDraft(details: unknown): SmsCampaignDraft | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+    const value = details as Partial<SmsCampaignDraft>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.campaignId !== "string" ||
+      typeof value.userId !== "string" ||
+      typeof value.requestId !== "string" ||
+      typeof value.style !== "string" ||
+      typeof value.timing !== "string" ||
+      typeof value.cta !== "string" ||
+      typeof value.message !== "string" ||
+      typeof value.length !== "number" ||
+      typeof value.status !== "string"
+    ) {
+      return null;
+    }
+    const isStyle = (item: unknown): item is SmsCampaignDraft["style"] =>
+      item === "promotion" || item === "reminder" || item === "announcement";
+    const isStatus = (item: unknown): item is SmsCampaignDraft["status"] =>
+      item === "ok" || item === "too_long";
+    if (!isStyle(value.style) || !isStatus(value.status)) {
+      return null;
+    }
+
+    return {
+      clientId: value.clientId,
+      campaignId: value.campaignId,
+      userId: value.userId,
+      requestId: value.requestId,
+      createdAt:
+        value.createdAt instanceof Date
+          ? value.createdAt
+          : new Date((value.createdAt as string | undefined) ?? Date.now()),
+      style: value.style,
+      timing: value.timing,
+      cta: value.cta,
+      message: value.message,
+      length: value.length,
+      status: value.status,
+    };
+  }
+
+  private resolveSmsCta(style: SmsCommunicationStyle): string {
+    if (style === "promotion") {
+      return "Kup teraz";
+    }
+    if (style === "reminder") {
+      return "Sprawdz teraz";
+    }
+    return "Dowiedz sie wiecej";
+  }
+
+  private composeSmsMessage(payload: {
+    campaignContext: string;
+    goals: string[];
+    tone: string;
+    cta: string;
+    style: SmsCommunicationStyle;
+  }): string {
+    const context = payload.campaignContext.trim();
+    const goal = payload.goals[0]?.trim() ?? "zwiekszenie zaangazowania";
+    const prefix =
+      payload.style === "promotion"
+        ? "Oferta specjalna!"
+        : payload.style === "reminder"
+          ? "Przypomnienie!"
+          : "Nowosc!";
+
+    return `${prefix} ${context}. Cel: ${goal}. Ton: ${payload.tone.trim()}. CTA: ${payload.cta}.`;
   }
 
   private buildPersonalizedVariant(payload: {
