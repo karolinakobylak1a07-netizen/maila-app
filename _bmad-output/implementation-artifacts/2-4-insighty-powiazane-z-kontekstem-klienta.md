@@ -1,6 +1,6 @@
 # Story 2.4: Insighty powiazane z kontekstem klienta
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -115,3 +115,11 @@ so that rekomendacje nie sa generyczne i daja sie od razu wdrozyc.
 - [Source: _bmad-output/planning-artifacts/architecture.md#Project-Structure--Boundaries]
 - [Source: _bmad-output/implementation-artifacts/2-2-raport-luk-konfiguracji.md#Dev-Notes]
 - [Source: _bmad-output/implementation-artifacts/2-3-wykrywanie-slabych-ogniw-i-priorytetyzacja-optymalizacji.md#Dev-Notes]
+
+## Completion Notes
+
+### How to verify manually
+
+1. Otworz workspace klienta z aktywnym kontekstem i uruchom widok `ClientsWorkspace`; sprawdz, ze panel "Insighty z kontekstem klienta" pobiera dane przez `analysis.getContextInsights` i pokazuje `Request ID`.
+2. Ustaw przypadek brakujacego kontekstu (brak celow lub priorytetow) i potwierdz status `draft_low_confidence` oraz liste `missingContext[]` na insightach.
+3. Ustaw przypadek konfliktu zrodel (rozbiezne metryki miedzy sync i inventory) i potwierdz status `source_conflict`, `conflictDetails` oraz brak jednoznacznej rekomendacji (`recommendedAction=null`).
