@@ -995,3 +995,21 @@ So that aktywna wersja rekomendacji odzwierciedla realna skutecznosc i feedback.
 **When** uruchamiana jest aktualizacja
 **Then** stara rekomendacja jest oznaczona jako deprecated
 **And** tworzona jest nowa aktywna wersja (v2/v3...) z ulepszeniami segment/CTA/headline.
+
+### Story 7.5: Raport postepu AI
+
+As a Owner/Strategy user,
+I want generowac raport pokazujacy czego AI nauczyla sie z KPI i feedbacku,
+So that zespol widzi jakosc uczenia i moze eksportowac wynik do pracy operacyjnej.
+
+**Acceptance Criteria:**
+
+**Given** dane KPI kampanii, feedback oraz aktualizacje rekomendacji
+**When** wywoluje `getAIAchievementsReport`
+**Then** system zwraca raport z metrykami uczenia AI oraz insightami
+**And** udostepnia linki eksportu PDF i Notion.
+
+**Given** brak wystarczajacych danych
+**When** raport jest generowany
+**Then** status raportu to `insufficient_data`
+**And** raport zwraca bezpieczne wartosci domyslne i insight fallback.
