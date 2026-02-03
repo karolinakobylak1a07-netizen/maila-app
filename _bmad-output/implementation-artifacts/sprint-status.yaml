@@ -1,0 +1,81 @@
+# generated: 2026-02-01T21:52:49Z
+# project: fisrt project
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-02-01T21:52:49Z
+project: fisrt project
+project_key: NOKEY
+tracking_system: file-system
+story_location: {project-root}/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-setup-projektu-ze-starter-template-create-t3-app: done
+  1-2-zarzadzanie-profilami-klientow-i-bezpieczne-przelaczanie-kontekstu: done
+  1-3-historia-decyzji-strategicznych-per-klient: done
+  1-4-discovery-onboarding-z-walidacja-brakow: done
+  1-5-egzekwowanie-dostepu-per-rola-i-ograniczenia-edycji: done
+  epic-1-retrospective: optional
+  epic-2: in-progress
+  2-1-sync-i-inwentaryzacja-danych-klaviyo: done
+  2-2-raport-luk-konfiguracji: done
+  2-3-wykrywanie-slabych-ogniw-i-priorytetyzacja-optymalizacji: in-progress
+  2-4-insighty-powiazane-z-kontekstem-klienta: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-generowanie-strategii-email-marketingu: backlog
+  3-2-plan-flow-i-automatyzacji: backlog
+  3-3-kalendarz-kampanii-oparty-o-cele-i-sezonowosc: backlog
+  3-4-propozycja-segmentacji-odbiorcow: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-generowanie-briefu-komunikacyjnego: backlog
+  4-2-generowanie-draftow-maili-z-briefu: backlog
+  4-3-workflow-zatwierdzania-i-odrzucania-tresci: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: backlog
+  5-2-mapa-zaleznosci-miedzy-flow-segmentami-i-kampaniami: backlog
+  5-3-detekcja-konfliktow-wdrozeniowych: backlog
+  5-4-eksport-paczki-materialow-do-wdrozenia-w-klaviyo: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-raporty-wynikow-klienta: backlog
+  6-2-rekomendacje-optymalizacyjne-z-priorytetem: backlog
+  6-3-planowanie-testow-a-b: backlog
+  6-4-wersjonowanie-strategii-planow-i-tresci: backlog
+  6-5-audit-log-i-manualne-bramki-akceptacji-rekomendacji: backlog
+  6-6-generowanie-dokumentacji-dla-klienta: backlog
+  6-7-eksport-do-narzedzi-pracy-notion-docs: backlog
+  epic-6-retrospective: optional
