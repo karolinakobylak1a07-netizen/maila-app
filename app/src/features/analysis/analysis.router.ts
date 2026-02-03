@@ -30,6 +30,7 @@ import {
   getAuditProductContextSchema,
   getProductCoverageAnalysisSchema,
   getCommunicationImprovementRecommendationsSchema,
+  getCampaignEffectivenessAnalysisSchema,
   submitArtifactFeedbackSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
@@ -66,6 +67,7 @@ type AnalysisServiceContract = Pick<
   | "getAuditProductContext"
   | "getProductCoverageAnalysis"
   | "getCommunicationImprovementRecommendations"
+  | "getCampaignEffectivenessAnalysis"
   | "submitArtifactFeedback"
 >;
 
@@ -480,6 +482,20 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getCommunicationImprovementRecommendations(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getCampaignEffectivenessAnalysis: protectedProcedure
+      .input(getCampaignEffectivenessAnalysisSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getCampaignEffectivenessAnalysis(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
             input,

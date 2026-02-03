@@ -521,6 +521,46 @@ export const getCommunicationImprovementRecommendationsSchema = z.object({
   clientId: z.string().cuid(),
   manualAccept: z.boolean().optional().default(false),
 });
+export const campaignEffectivenessStatusSchema = z.enum([
+  "successful",
+  "needs_improvement",
+  "insufficient_data",
+]);
+export const campaignEffectivenessPerformanceSchema = z.object({
+  campaignCount: z.number().int().min(0),
+  openRate: z.number().min(0),
+  clickRate: z.number().min(0),
+  revenue: z.number().min(0),
+  conversions: z.number().int().min(0),
+});
+export const campaignEffectivenessFeedbackSchema = z.object({
+  feedbackCount: z.number().int().min(0),
+  recommendationFeedbackCount: z.number().int().min(0),
+  draftFeedbackCount: z.number().int().min(0),
+  averageRating: z.number().min(0).max(5),
+});
+export const campaignEffectivenessScoresSchema = z.object({
+  performanceScore: z.number().min(0).max(100),
+  feedbackScore: z.number().min(0).max(100),
+  blendedScore: z.number().min(0).max(100),
+});
+export const campaignEffectivenessAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  rangeStart: z.date(),
+  rangeEnd: z.date(),
+  status: campaignEffectivenessStatusSchema,
+  performance: campaignEffectivenessPerformanceSchema,
+  feedback: campaignEffectivenessFeedbackSchema,
+  scores: campaignEffectivenessScoresSchema,
+  insights: z.array(z.string().min(1)),
+});
+export const getCampaignEffectivenessAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  rangeStart: z.coerce.date(),
+  rangeEnd: z.coerce.date(),
+});
 export const artifactFeedbackTargetTypeSchema = z.enum([
   "recommendation",
   "draft",
@@ -573,6 +613,7 @@ export type ExportImplementationDocumentationSchema = z.infer<typeof exportImple
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
+export type GetCampaignEffectivenessAnalysisSchema = z.infer<typeof getCampaignEffectivenessAnalysisSchema>;
 export type SubmitArtifactFeedbackSchema = z.infer<typeof submitArtifactFeedbackSchema>;
 
 export const syncNowSchema = z.object({
@@ -679,5 +720,7 @@ export type ProductCoverageAnalysis = z.infer<typeof productCoverageAnalysisSche
 export type CommunicationImprovementRecommendationStatus = z.infer<typeof communicationImprovementRecommendationStatusSchema>;
 export type CommunicationImprovementRecommendationItem = z.infer<typeof communicationImprovementRecommendationItemSchema>;
 export type CommunicationImprovementRecommendations = z.infer<typeof communicationImprovementRecommendationsSchema>;
+export type CampaignEffectivenessStatus = z.infer<typeof campaignEffectivenessStatusSchema>;
+export type CampaignEffectivenessAnalysis = z.infer<typeof campaignEffectivenessAnalysisSchema>;
 export type ArtifactFeedbackTargetType = z.infer<typeof artifactFeedbackTargetTypeSchema>;
 export type ArtifactFeedback = z.infer<typeof artifactFeedbackSchema>;

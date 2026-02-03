@@ -492,6 +492,47 @@ export interface GetCommunicationImprovementRecommendationsOutput {
   };
 }
 
+export interface GetCampaignEffectivenessAnalysisInput {
+  clientId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+}
+
+export interface GetCampaignEffectivenessAnalysisOutput {
+  data: {
+    analysis: {
+      clientId: string;
+      requestId: string;
+      generatedAt: Date;
+      rangeStart: Date;
+      rangeEnd: Date;
+      status: "successful" | "needs_improvement" | "insufficient_data";
+      performance: {
+        campaignCount: number;
+        openRate: number;
+        clickRate: number;
+        revenue: number;
+        conversions: number;
+      };
+      feedback: {
+        feedbackCount: number;
+        recommendationFeedbackCount: number;
+        draftFeedbackCount: number;
+        averageRating: number;
+      };
+      scores: {
+        performanceScore: number;
+        feedbackScore: number;
+        blendedScore: number;
+      };
+      insights: string[];
+    };
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export interface SubmitArtifactFeedbackInput {
   clientId: string;
   targetType: "recommendation" | "draft";
@@ -2507,6 +2548,92 @@ export class AnalysisService {
     };
   }
 
+  async getCampaignEffectivenessAnalysis(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetCampaignEffectivenessAnalysisInput,
+  ): Promise<GetCampaignEffectivenessAnalysisOutput> {
+    const requestId = `campaign-effectiveness-analysis-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    if (input.rangeStart.getTime() > input.rangeEnd.getTime()) {
+      throw new AnalysisDomainError(
+        "validation",
+        "INVALID_DATE_RANGE",
+        {
+          rangeStart: input.rangeStart.toISOString(),
+          rangeEnd: input.rangeEnd.toISOString(),
+        },
+        requestId,
+      );
+    }
+
+    const logs = await this.repository.listLatestClientAuditLogs(input.clientId, 300);
+    const logsInRange = logs.filter(
+      (log) =>
+        log.createdAt.getTime() >= input.rangeStart.getTime() &&
+        log.createdAt.getTime() <= input.rangeEnd.getTime(),
+    );
+
+    const campaignPerformance = logsInRange
+      .filter((log) => log.eventName === "campaign.performance.reported")
+      .map((log) => this.parseCampaignPerformanceMetrics(log.details))
+      .filter((record): record is NonNullable<typeof record> => record !== null);
+    const feedbackLogs = logsInRange.filter(
+      (log) =>
+        log.eventName === "feedback.recommendation.submitted" ||
+        log.eventName === "feedback.draft.submitted",
+    );
+
+    const performance = this.aggregateCampaignPerformance(campaignPerformance);
+    const feedback = this.aggregateFeedbackMetrics(feedbackLogs);
+    const performanceScore = this.computePerformanceScore(performance);
+    const feedbackScore = this.computeFeedbackScore(feedback.averageRating, feedback.feedbackCount);
+    const hasData = performance.campaignCount > 0 && feedback.feedbackCount > 0;
+    const blendedScore = hasData
+      ? Number((performanceScore * 0.7 + feedbackScore * 0.3).toFixed(2))
+      : 0;
+
+    const status: "successful" | "needs_improvement" | "insufficient_data" = !hasData
+      ? "insufficient_data"
+      : blendedScore >= 70
+        ? "successful"
+        : "needs_improvement";
+
+    const insights =
+      status === "insufficient_data"
+        ? [
+            "Brak pelnych danych KPI lub feedbacku w wybranym zakresie.",
+            "Dodaj raporty campaign.performance.reported i oceny rekomendacji/draftow.",
+          ]
+        : [
+            `Topline blended score: ${blendedScore.toFixed(2)}.`,
+            `Sredni rating feedbacku: ${feedback.averageRating.toFixed(2)} / 5.`,
+          ];
+
+    return {
+      data: {
+        analysis: {
+          clientId: input.clientId,
+          requestId,
+          generatedAt: new Date(),
+          rangeStart: input.rangeStart,
+          rangeEnd: input.rangeEnd,
+          status,
+          performance,
+          feedback,
+          scores: {
+            performanceScore,
+            feedbackScore,
+            blendedScore,
+          },
+          insights,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   async submitArtifactFeedback(
     userId: string,
     role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
@@ -2568,6 +2695,135 @@ export class AnalysisService {
         requestId,
       },
     };
+  }
+
+  private parseCampaignPerformanceMetrics(
+    details: unknown,
+  ): {
+    openRate: number;
+    clickRate: number;
+    revenue: number;
+    conversions: number;
+  } | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const payload = details as Record<string, unknown>;
+    const openRate = Number(payload.openRate);
+    const clickRate = Number(payload.clickRate);
+    const revenue = Number(payload.revenue);
+    const conversions = Number(payload.conversions);
+
+    if (
+      Number.isFinite(openRate) &&
+      Number.isFinite(clickRate) &&
+      Number.isFinite(revenue) &&
+      Number.isFinite(conversions)
+    ) {
+      return {
+        openRate: Math.max(0, openRate),
+        clickRate: Math.max(0, clickRate),
+        revenue: Math.max(0, revenue),
+        conversions: Math.max(0, Math.trunc(conversions)),
+      };
+    }
+
+    return null;
+  }
+
+  private aggregateCampaignPerformance(
+    metrics: Array<{ openRate: number; clickRate: number; revenue: number; conversions: number }>,
+  ) {
+    if (metrics.length === 0) {
+      return {
+        campaignCount: 0,
+        openRate: 0,
+        clickRate: 0,
+        revenue: 0,
+        conversions: 0,
+      };
+    }
+
+    const totals = metrics.reduce(
+      (acc, item) => ({
+        openRate: acc.openRate + item.openRate,
+        clickRate: acc.clickRate + item.clickRate,
+        revenue: acc.revenue + item.revenue,
+        conversions: acc.conversions + item.conversions,
+      }),
+      { openRate: 0, clickRate: 0, revenue: 0, conversions: 0 },
+    );
+
+    return {
+      campaignCount: metrics.length,
+      openRate: Number((totals.openRate / metrics.length).toFixed(2)),
+      clickRate: Number((totals.clickRate / metrics.length).toFixed(2)),
+      revenue: Number(totals.revenue.toFixed(2)),
+      conversions: totals.conversions,
+    };
+  }
+
+  private aggregateFeedbackMetrics(
+    logs: Array<{ eventName: string; details: unknown }>,
+  ) {
+    const ratings = logs
+      .map((log) => {
+        if (!log.details || typeof log.details !== "object") {
+          return null;
+        }
+        const rating = Number((log.details as Record<string, unknown>).rating);
+        return Number.isFinite(rating) ? rating : null;
+      })
+      .filter((rating): rating is number => rating !== null);
+
+    const recommendationFeedbackCount = logs.filter(
+      (log) => log.eventName === "feedback.recommendation.submitted",
+    ).length;
+    const draftFeedbackCount = logs.filter(
+      (log) => log.eventName === "feedback.draft.submitted",
+    ).length;
+
+    const averageRating =
+      ratings.length > 0
+        ? Number((ratings.reduce((acc, value) => acc + value, 0) / ratings.length).toFixed(2))
+        : 0;
+
+    return {
+      feedbackCount: logs.length,
+      recommendationFeedbackCount,
+      draftFeedbackCount,
+      averageRating,
+    };
+  }
+
+  private computePerformanceScore(performance: {
+    campaignCount: number;
+    openRate: number;
+    clickRate: number;
+    revenue: number;
+    conversions: number;
+  }) {
+    if (performance.campaignCount === 0) {
+      return 0;
+    }
+
+    const openScore = Math.max(0, Math.min(100, performance.openRate));
+    const clickScore = Math.max(0, Math.min(100, performance.clickRate));
+    const revenueScore = Math.max(0, Math.min(100, performance.revenue / 10));
+    const conversionScore = Math.max(0, Math.min(100, performance.conversions * 2));
+
+    return Number(
+      (openScore * 0.3 + clickScore * 0.3 + revenueScore * 0.2 + conversionScore * 0.2).toFixed(2),
+    );
+  }
+
+  private computeFeedbackScore(averageRating: number, feedbackCount: number) {
+    if (feedbackCount === 0) {
+      return 0;
+    }
+
+    return Number((Math.max(0, Math.min(5, averageRating)) * 20).toFixed(2));
   }
 
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {

@@ -60,6 +60,9 @@ import {
   communicationImprovementRecommendationItemSchema,
   communicationImprovementRecommendationsSchema,
   getCommunicationImprovementRecommendationsSchema,
+  campaignEffectivenessStatusSchema,
+  campaignEffectivenessAnalysisSchema,
+  getCampaignEffectivenessAnalysisSchema,
   artifactFeedbackTargetTypeSchema,
   artifactFeedbackSchema,
   submitArtifactFeedbackSchema,
@@ -883,6 +886,49 @@ describe('OptimizationArea Schema', () => {
           comment: 'invalid',
         }).success,
       ).toBe(false);
+    });
+
+    it('should parse campaign effectiveness analysis payload and input', () => {
+      expect(campaignEffectivenessStatusSchema.safeParse('successful').success).toBe(true);
+      expect(campaignEffectivenessStatusSchema.safeParse('needs_improvement').success).toBe(true);
+      expect(campaignEffectivenessStatusSchema.safeParse('insufficient_data').success).toBe(true);
+
+      const payloadResult = campaignEffectivenessAnalysisSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'campaign-effectiveness-1',
+        generatedAt: new Date('2026-02-21T10:00:00.000Z'),
+        rangeStart: new Date('2026-02-01T00:00:00.000Z'),
+        rangeEnd: new Date('2026-02-21T23:59:59.000Z'),
+        status: 'successful',
+        performance: {
+          campaignCount: 4,
+          openRate: 46.2,
+          clickRate: 12.1,
+          revenue: 1200,
+          conversions: 32,
+        },
+        feedback: {
+          feedbackCount: 6,
+          recommendationFeedbackCount: 3,
+          draftFeedbackCount: 3,
+          averageRating: 4.3,
+        },
+        scores: {
+          performanceScore: 74.2,
+          feedbackScore: 86,
+          blendedScore: 77.74,
+        },
+        insights: ['Topline blended score: 77.74.'],
+      });
+      expect(payloadResult.success).toBe(true);
+
+      expect(
+        getCampaignEffectivenessAnalysisSchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          rangeStart: '2026-02-01T00:00:00.000Z',
+          rangeEnd: '2026-02-21T23:59:59.000Z',
+        }).success,
+      ).toBe(true);
     });
   });
 });

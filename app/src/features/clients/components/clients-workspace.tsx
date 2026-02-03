@@ -40,6 +40,7 @@ import { ImplementationAlertsCard } from "~/features/analysis/components/impleme
 import { AuditProductContextCard } from "~/features/analysis/components/audit-product-context-card";
 import { ProductCoverageAnalysisCard } from "~/features/analysis/components/product-coverage-analysis-card";
 import { CommunicationImprovementRecommendationsCard } from "~/features/analysis/components/communication-improvement-recommendations-card";
+import { CampaignEffectivenessAnalysisCard } from "~/features/analysis/components/campaign-effectiveness-analysis-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -127,6 +128,9 @@ export function ClientsWorkspace() {
   const [communicationRecommendationsError, setCommunicationRecommendationsError] = useState<string | null>(null);
   const [communicationRecommendationsLoading, setCommunicationRecommendationsLoading] = useState(false);
   const [communicationRecommendationsRefreshing, setCommunicationRecommendationsRefreshing] = useState(false);
+  const [campaignEffectivenessError, setCampaignEffectivenessError] = useState<string | null>(null);
+  const [campaignEffectivenessLoading, setCampaignEffectivenessLoading] = useState(false);
+  const [campaignEffectivenessRefreshing, setCampaignEffectivenessRefreshing] = useState(false);
 
   const utils = api.useUtils();
 
@@ -328,6 +332,22 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const campaignEffectivenessRange = useMemo(() => {
+    const rangeEnd = new Date();
+    const rangeStart = new Date(rangeEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { rangeStart, rangeEnd };
+  }, []);
+  const campaignEffectivenessQuery = api.analysis.getCampaignEffectivenessAnalysis.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+      rangeStart: campaignEffectivenessRange.rangeStart,
+      rangeEnd: campaignEffectivenessRange.rangeEnd,
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const submitArtifactFeedbackMutation = api.analysis.submitArtifactFeedback.useMutation();
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
@@ -408,6 +428,7 @@ export function ClientsWorkspace() {
       utils.analysis.getAuditProductContext.invalidate(),
       utils.analysis.getProductCoverageAnalysis.invalidate(),
       utils.analysis.getCommunicationImprovementRecommendations.invalidate(),
+      utils.analysis.getCampaignEffectivenessAnalysis.invalidate(),
     ]);
   };
 
@@ -1019,6 +1040,30 @@ export function ClientsWorkspace() {
     communicationRecommendationsQuery.error,
   ]);
 
+  useEffect(() => {
+    if (campaignEffectivenessQuery.isLoading) {
+      setCampaignEffectivenessLoading(true);
+      setCampaignEffectivenessError(null);
+      return;
+    }
+
+    if (campaignEffectivenessQuery.isError) {
+      setCampaignEffectivenessLoading(false);
+      const requestId = extractRequestId(campaignEffectivenessQuery.error);
+      setCampaignEffectivenessError(
+        withRequestId("Nie udalo sie pobrac analizy skutecznosci kampanii.", requestId),
+      );
+      return;
+    }
+
+    setCampaignEffectivenessLoading(false);
+    setCampaignEffectivenessError(null);
+  }, [
+    campaignEffectivenessQuery.isLoading,
+    campaignEffectivenessQuery.isError,
+    campaignEffectivenessQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1302,6 +1347,28 @@ export function ClientsWorkspace() {
       );
     } finally {
       setCommunicationRecommendationsRefreshing(false);
+    }
+  };
+
+  const refreshCampaignEffectivenessAnalysis = async () => {
+    if (!activeClientId) {
+      setCampaignEffectivenessError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setCampaignEffectivenessRefreshing(true);
+    try {
+      await campaignEffectivenessQuery.refetch();
+      setCampaignEffectivenessError(null);
+    } catch (error) {
+      setCampaignEffectivenessError(
+        withRequestId(
+          "Nie udalo sie odswiezyc analizy skutecznosci kampanii.",
+          extractRequestId(error),
+        ),
+      );
+    } finally {
+      setCampaignEffectivenessRefreshing(false);
     }
   };
 
@@ -1676,6 +1743,19 @@ export function ClientsWorkspace() {
             onSubmitFeedback={async ({ artifactId, rating, comment }) => {
               await submitRecommendationFeedback(artifactId, rating, comment);
             }}
+          />
+        </div>
+        <div className="mt-4">
+          <CampaignEffectivenessAnalysisCard
+            loading={campaignEffectivenessLoading}
+            refreshing={campaignEffectivenessRefreshing}
+            error={campaignEffectivenessError}
+            requestId={
+              campaignEffectivenessQuery.data?.meta.requestId ??
+              extractRequestId(campaignEffectivenessQuery.error)
+            }
+            analysis={campaignEffectivenessQuery.data?.data.analysis ?? null}
+            onRefresh={refreshCampaignEffectivenessAnalysis}
           />
         </div>
         </div>

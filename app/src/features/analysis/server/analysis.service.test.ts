@@ -3081,4 +3081,90 @@ describe("AnalysisService.getOptimizationAreas", () => {
       );
     });
   });
+
+  describe("campaign effectiveness analysis (Story 7.2)", () => {
+    it("aggregates campaign KPI performance with feedback and returns blended score", async () => {
+      const now = new Date("2026-02-22T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "campaign-1",
+          requestId: "campaign-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: { openRate: 78, clickRate: 42, revenue: 1800, conversions: 54 },
+        },
+        {
+          id: "campaign-2",
+          requestId: "campaign-2",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: { openRate: 74, clickRate: 38, revenue: 1650, conversions: 49 },
+        },
+        {
+          id: "feedback-r1",
+          requestId: "feedback-r1",
+          eventName: "feedback.recommendation.submitted",
+          createdAt: now,
+          actorId: "u1",
+          details: { rating: 5, comment: "trafne" },
+        },
+        {
+          id: "feedback-d1",
+          requestId: "feedback-d1",
+          eventName: "feedback.draft.submitted",
+          createdAt: now,
+          actorId: "u1",
+          details: { rating: 4, comment: "ok" },
+        },
+      ]);
+
+      const result = await analysisService.getCampaignEffectivenessAnalysis("u1", "OWNER", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.analysis.status).toBe("successful");
+      expect(result.data.analysis.performance.campaignCount).toBe(2);
+      expect(result.data.analysis.feedback.feedbackCount).toBe(2);
+      expect(result.data.analysis.feedback.averageRating).toBe(4.5);
+      expect(result.data.analysis.scores.performanceScore).toBeGreaterThan(0);
+      expect(result.data.analysis.scores.feedbackScore).toBe(90);
+      expect(result.data.analysis.scores.blendedScore).toBeGreaterThan(0);
+    });
+
+    it("returns insufficient_data when KPI or feedback is missing in date range", async () => {
+      const now = new Date("2026-02-22T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "campaign-only-1",
+          requestId: "campaign-only-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: { openRate: 41, clickRate: 8, revenue: 320, conversions: 9 },
+        },
+      ]);
+
+      const result = await analysisService.getCampaignEffectivenessAnalysis("u1", "STRATEGY", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.analysis.status).toBe("insufficient_data");
+      expect(result.data.analysis.scores.blendedScore).toBe(0);
+      expect(result.data.analysis.insights[0]).toContain("Brak pelnych danych KPI");
+    });
+  });
 });
