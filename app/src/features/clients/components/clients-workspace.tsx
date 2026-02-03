@@ -35,6 +35,7 @@ import { SegmentProposalCard } from "~/features/analysis/components/segment-prop
 import { CommunicationBriefCard } from "~/features/analysis/components/communication-brief-card";
 import { EmailDraftCard } from "~/features/analysis/components/email-draft-card";
 import { PersonalizedEmailDraftCard } from "~/features/analysis/components/personalized-email-draft-card";
+import { ImplementationChecklistCard } from "~/features/analysis/components/implementation-checklist-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -101,6 +102,10 @@ export function ClientsWorkspace() {
   const [emailDraftLoading, setEmailDraftLoading] = useState(false);
   const [personalizedDraftError, setPersonalizedDraftError] = useState<string | null>(null);
   const [personalizedDraftLoading, setPersonalizedDraftLoading] = useState(false);
+  const [implementationChecklistError, setImplementationChecklistError] = useState<string | null>(null);
+  const [implementationChecklistLoading, setImplementationChecklistLoading] = useState(false);
+  const [implementationChecklistUpdatingStepId, setImplementationChecklistUpdatingStepId] =
+    useState<string | null>(null);
 
   const utils = api.useUtils();
 
@@ -237,6 +242,17 @@ export function ClientsWorkspace() {
     },
   );
   const generatePersonalizedDraftMutation = api.analysis.generatePersonalizedEmailDraft.useMutation();
+  const latestImplementationChecklistQuery = api.analysis.getLatestImplementationChecklist.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
+  const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -307,6 +323,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestCommunicationBrief.invalidate(),
       utils.analysis.getLatestEmailDraft.invalidate(),
       utils.analysis.getLatestPersonalizedEmailDraft.invalidate(),
+      utils.analysis.getLatestImplementationChecklist.invalidate(),
     ]);
   };
 
@@ -798,6 +815,30 @@ export function ClientsWorkspace() {
     latestPersonalizedDraftQuery.error,
   ]);
 
+  useEffect(() => {
+    if (latestImplementationChecklistQuery.isLoading) {
+      setImplementationChecklistLoading(true);
+      setImplementationChecklistError(null);
+      return;
+    }
+
+    if (latestImplementationChecklistQuery.isError) {
+      setImplementationChecklistLoading(false);
+      const requestId = extractRequestId(latestImplementationChecklistQuery.error);
+      setImplementationChecklistError(
+        withRequestId("Nie udalo sie pobrac checklisty wdrozeniowej.", requestId),
+      );
+      return;
+    }
+
+    setImplementationChecklistLoading(false);
+    setImplementationChecklistError(null);
+  }, [
+    latestImplementationChecklistQuery.isLoading,
+    latestImplementationChecklistQuery.isError,
+    latestImplementationChecklistQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -910,6 +951,79 @@ export function ClientsWorkspace() {
           extractRequestId(error),
         ),
       );
+    }
+  };
+
+  const generateImplementationChecklist = async () => {
+    if (!activeClientId) {
+      setImplementationChecklistError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateImplementationChecklistMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setImplementationChecklistError(
+        withRequestId(
+          "Nie udalo sie wygenerowac checklisty wdrozeniowej.",
+          extractRequestId(error),
+        ),
+      );
+    }
+  };
+
+  const updateImplementationChecklistStep = async (
+    stepId: string,
+    status: "pending" | "in_progress" | "done",
+  ) => {
+    if (!activeClientId) {
+      setImplementationChecklistError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    const checklist = latestImplementationChecklistQuery.data?.data.checklist;
+    if (!checklist) {
+      setImplementationChecklistError("Najpierw wygeneruj checkliste wdrozeniowa.");
+      return;
+    }
+
+    setImplementationChecklistUpdatingStepId(stepId);
+    try {
+      const result = await updateImplementationChecklistStepMutation.mutateAsync({
+        clientId: activeClientId,
+        stepId,
+        status,
+        expectedVersion: checklist.version,
+      });
+      if (!result) {
+        throw new Error("IMPLEMENTATION_CHECKLIST_UPDATE_EMPTY_RESPONSE");
+      }
+
+      if (result.data.checklist.status === "conflict_requires_refresh") {
+        setImplementationChecklistError(
+          withRequestId(
+            "Wykryto konflikt wersji checklisty. Odswiez dane i ponow akcje.",
+            result.meta.requestId,
+          ),
+        );
+      } else if (result.data.checklist.status === "transaction_error") {
+        setImplementationChecklistError(
+          withRequestId(
+            "Zapis kroku nie powiodl sie. Poprzedni stan checklisty zostal zachowany.",
+            result.meta.requestId,
+          ),
+        );
+      } else {
+        setImplementationChecklistError(null);
+      }
+      await refresh();
+    } catch (error) {
+      setImplementationChecklistError(
+        withRequestId("Nie udalo sie zaktualizowac kroku checklisty.", extractRequestId(error)),
+      );
+    } finally {
+      setImplementationChecklistUpdatingStepId(null);
     }
   };
 
@@ -1083,6 +1197,21 @@ export function ClientsWorkspace() {
             }
             personalizedDraft={latestPersonalizedDraftQuery.data?.data.personalizedDraft ?? null}
             onGenerate={generatePersonalizedDraft}
+          />
+        </div>
+        <div className="mt-4">
+          <ImplementationChecklistCard
+            loading={implementationChecklistLoading}
+            generating={generateImplementationChecklistMutation.isPending}
+            updatingStepId={implementationChecklistUpdatingStepId}
+            error={implementationChecklistError}
+            requestId={
+              latestImplementationChecklistQuery.data?.meta.requestId ??
+              extractRequestId(latestImplementationChecklistQuery.error)
+            }
+            checklist={latestImplementationChecklistQuery.data?.data.checklist ?? null}
+            onGenerate={generateImplementationChecklist}
+            onUpdateStep={updateImplementationChecklistStep}
           />
         </div>
         </div>

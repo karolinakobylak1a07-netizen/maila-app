@@ -30,6 +30,11 @@ import {
   personalizedEmailDraftSchema,
   personalizedDraftStatusSchema,
   generatePersonalizedEmailDraftSchema,
+  implementationChecklistStepStatusSchema,
+  implementationChecklistStatusSchema,
+  implementationChecklistSchema,
+  generateImplementationChecklistSchema,
+  updateImplementationChecklistStepSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -535,6 +540,54 @@ describe('OptimizationArea Schema', () => {
     it('should validate generatePersonalizedEmailDraft input', () => {
       expect(generatePersonalizedEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(generatePersonalizedEmailDraftSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse implementation checklist statuses and payload', () => {
+      expect(implementationChecklistStepStatusSchema.safeParse('pending').success).toBe(true);
+      expect(implementationChecklistStepStatusSchema.safeParse('in_progress').success).toBe(true);
+      expect(implementationChecklistStepStatusSchema.safeParse('done').success).toBe(true);
+      expect(implementationChecklistStatusSchema.safeParse('ok').success).toBe(true);
+      expect(implementationChecklistStatusSchema.safeParse('conflict_requires_refresh').success).toBe(true);
+      expect(implementationChecklistStatusSchema.safeParse('transaction_error').success).toBe(true);
+
+      const result = implementationChecklistSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 2,
+        status: 'ok',
+        requestId: 'req-checklist',
+        generatedAt: new Date('2026-02-10T12:00:00.000Z'),
+        updatedAt: new Date('2026-02-10T12:10:00.000Z'),
+        totalSteps: 3,
+        completedSteps: 1,
+        progressPercent: 33,
+        steps: [
+          {
+            id: 'step-1',
+            title: 'Wdrozyc flow welcome',
+            sourceType: 'flow',
+            sourceRef: 'Welcome',
+            status: 'done',
+            completedAt: new Date('2026-02-10T12:10:00.000Z'),
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate implementation checklist mutations input', () => {
+      expect(generateImplementationChecklistSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(updateImplementationChecklistStepSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        stepId: 'step-1',
+        status: 'done',
+        expectedVersion: 1,
+      }).success).toBe(true);
+      expect(updateImplementationChecklistStepSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        stepId: '',
+        status: 'done',
+        expectedVersion: 0,
+      }).success).toBe(false);
     });
   });
 });

@@ -6,6 +6,9 @@ import type {
   CampaignCalendarItem,
   CommunicationBrief,
   EmailDraft,
+  ImplementationChecklist,
+  ImplementationChecklistStep,
+  ImplementationChecklistStepStatus,
   PersonalizedEmailDraft,
   PersonalizedDraftVariant,
   EmailStrategy,
@@ -325,6 +328,52 @@ export interface GetLatestPersonalizedEmailDraftOutput {
   };
   meta: {
     requestId: string;
+  };
+}
+
+export interface GenerateImplementationChecklistInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestImplementationChecklistInput {
+  clientId: string;
+}
+
+export interface UpdateImplementationChecklistStepInput {
+  clientId: string;
+  stepId: string;
+  status: ImplementationChecklistStepStatus;
+  expectedVersion: number;
+  requestId?: string;
+}
+
+export interface GenerateImplementationChecklistOutput {
+  data: {
+    checklist: ImplementationChecklist;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestImplementationChecklistOutput {
+  data: {
+    checklist: ImplementationChecklist | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface UpdateImplementationChecklistStepOutput {
+  data: {
+    checklist: ImplementationChecklist;
+  };
+  meta: {
+    requestId: string;
+    updatedAt: Date;
   };
 }
 
@@ -1338,6 +1387,163 @@ export class AnalysisService {
     };
   }
 
+  async generateImplementationChecklist(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: GenerateImplementationChecklistInput,
+  ): Promise<GenerateImplementationChecklistOutput> {
+    const requestId = input.requestId ?? `implementation-checklist-generate-${Date.now()}`;
+    await this.validateImplementationAccess(userId, role, input.clientId, requestId);
+
+    const [existingChecklistRecords, flowPlanRecords, campaignCalendarRecords] =
+      await Promise.all([
+        this.repository.listLatestImplementationChecklistAudit(input.clientId, 20),
+        this.repository.listLatestFlowPlanAudit(input.clientId, 20),
+        this.repository.listLatestCampaignCalendarAudit(input.clientId, 20),
+      ]);
+
+    const latestChecklist = this.parseLatestImplementationChecklist(existingChecklistRecords);
+    const latestFlowPlan = this.parseLatestFlowPlan(flowPlanRecords);
+    const latestCampaignCalendar = this.parseLatestCampaignCalendar(campaignCalendarRecords);
+    const steps = this.buildImplementationChecklistSteps(latestFlowPlan, latestCampaignCalendar);
+    const checklist = this.buildImplementationChecklistRecord({
+      clientId: input.clientId,
+      version: (latestChecklist?.version ?? 0) + 1,
+      status: "ok",
+      requestId,
+      steps,
+      generatedAt: new Date(),
+    });
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "implementation.checklist.generated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: checklist,
+    });
+
+    return {
+      data: { checklist },
+      meta: { generatedAt: checklist.generatedAt, requestId },
+    };
+  }
+
+  async getLatestImplementationChecklist(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: GetLatestImplementationChecklistInput,
+  ): Promise<GetLatestImplementationChecklistOutput> {
+    const requestId = `implementation-checklist-latest-${Date.now()}`;
+    await this.validateImplementationReadAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestImplementationChecklistAudit(input.clientId, 20);
+    const checklist = this.parseLatestImplementationChecklist(records) ?? null;
+    return {
+      data: { checklist },
+      meta: { requestId },
+    };
+  }
+
+  async updateImplementationChecklistStep(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    input: UpdateImplementationChecklistStepInput,
+  ): Promise<UpdateImplementationChecklistStepOutput> {
+    const requestId = input.requestId ?? `implementation-checklist-step-update-${Date.now()}`;
+    await this.validateImplementationAccess(userId, role, input.clientId, requestId);
+
+    const records = await this.repository.listLatestImplementationChecklistAudit(input.clientId, 20);
+    const latestChecklist = this.parseLatestImplementationChecklist(records);
+    if (!latestChecklist) {
+      throw new AnalysisDomainError(
+        "validation",
+        "IMPLEMENTATION_CHECKLIST_NOT_FOUND",
+        { clientId: input.clientId },
+        requestId,
+      );
+    }
+
+    if (latestChecklist.version !== input.expectedVersion) {
+      return {
+        data: {
+          checklist: {
+            ...latestChecklist,
+            status: "conflict_requires_refresh",
+            requestId,
+          },
+        },
+        meta: {
+          requestId,
+          updatedAt: latestChecklist.updatedAt,
+        },
+      };
+    }
+
+    const stepExists = latestChecklist.steps.some((step) => step.id === input.stepId);
+    if (!stepExists) {
+      throw new AnalysisDomainError(
+        "validation",
+        "IMPLEMENTATION_CHECKLIST_STEP_NOT_FOUND",
+        { stepId: input.stepId, clientId: input.clientId },
+        requestId,
+      );
+    }
+
+    const now = new Date();
+    const updatedSteps = latestChecklist.steps.map((step) => {
+      if (step.id !== input.stepId) {
+        return step;
+      }
+
+      return {
+        ...step,
+        status: input.status,
+        completedAt: input.status === "done" ? now : null,
+      };
+    });
+
+    const updatedChecklist = this.buildImplementationChecklistRecord({
+      clientId: input.clientId,
+      version: latestChecklist.version + 1,
+      status: "ok",
+      requestId,
+      steps: updatedSteps,
+      generatedAt: latestChecklist.generatedAt,
+      updatedAt: now,
+    });
+
+    try {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "implementation.checklist.step_updated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: updatedChecklist,
+      });
+    } catch {
+      return {
+        data: {
+          checklist: {
+            ...latestChecklist,
+            status: "transaction_error",
+            requestId,
+          },
+        },
+        meta: {
+          requestId,
+          updatedAt: latestChecklist.updatedAt,
+        },
+      };
+    }
+
+    return {
+      data: { checklist: updatedChecklist },
+      meta: { requestId, updatedAt: updatedChecklist.updatedAt },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -1463,6 +1669,61 @@ export class AnalysisService {
         "forbidden",
         "rbac_module_edit_forbidden",
         { module: "CONTENT", role },
+        requestId,
+      );
+    }
+  }
+
+  private async validateImplementationReadAccess(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    clientId: string,
+  ) {
+    const membership = await this.repository.findMembership(userId, clientId);
+    if (!membership) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "user_not_member_of_client" },
+        "unknown",
+      );
+    }
+
+    const policies = await this.repository.listRbacPoliciesByRole(role);
+    const implementationPolicy = policies.find((policy) => policy.module === "IMPLEMENTATION");
+    if (!implementationPolicy || !implementationPolicy.canView) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "rbac_module_view_forbidden",
+        { module: "IMPLEMENTATION", role },
+        "unknown",
+      );
+    }
+  }
+
+  private async validateImplementationAccess(
+    userId: string,
+    role: "OWNER" | "OPERATIONS",
+    clientId: string,
+    requestId: string,
+  ) {
+    const membership = await this.repository.findMembership(userId, clientId);
+    if (!membership) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "user_not_member_of_client" },
+        requestId,
+      );
+    }
+
+    const policies = await this.repository.listRbacPoliciesByRole(role);
+    const implementationPolicy = policies.find((policy) => policy.module === "IMPLEMENTATION");
+    if (!implementationPolicy || !implementationPolicy.canEdit) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "rbac_module_edit_forbidden",
+        { module: "IMPLEMENTATION", role },
         requestId,
       );
     }
@@ -2450,6 +2711,165 @@ export class AnalysisService {
       }
     }
     return null;
+  }
+
+  private buildImplementationChecklistSteps(
+    flowPlan: FlowPlan | null,
+    calendar: CampaignCalendar | null,
+  ): ImplementationChecklistStep[] {
+    const flowSteps =
+      flowPlan?.items.map((item, index) => ({
+        id: `flow-${index + 1}-${this.slugify(item.name)}`,
+        title: `Wdrozyc flow: ${item.name}`,
+        sourceType: "flow" as const,
+        sourceRef: item.name,
+        status: "pending" as const,
+        completedAt: null,
+      })) ?? [];
+    const campaignSteps =
+      calendar?.items.slice(0, 8).map((item, index) => ({
+        id: `campaign-${index + 1}-week-${item.weekNumber}`,
+        title: `Skonfigurowac kampanie: ${item.title}`,
+        sourceType: "campaign" as const,
+        sourceRef: `week-${item.weekNumber}`,
+        status: "pending" as const,
+        completedAt: null,
+      })) ?? [];
+
+    const combined = [...flowSteps, ...campaignSteps];
+    if (combined.length > 0) {
+      return combined;
+    }
+
+    return [
+      {
+        id: "fallback-1-plan-preparation",
+        title: "Uzupelnij plan flow i kalendarz kampanii przed wdrozeniem.",
+        sourceType: "flow",
+        sourceRef: "missing_sources",
+        status: "pending",
+        completedAt: null,
+      },
+    ];
+  }
+
+  private buildImplementationChecklistRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "conflict_requires_refresh" | "transaction_error";
+    requestId: string;
+    steps: ImplementationChecklistStep[];
+    generatedAt?: Date;
+    updatedAt?: Date;
+  }): ImplementationChecklist {
+    const completedSteps = payload.steps.filter((step) => step.status === "done").length;
+    const totalSteps = payload.steps.length;
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      requestId: payload.requestId,
+      generatedAt: payload.generatedAt ?? new Date(),
+      updatedAt: payload.updatedAt ?? new Date(),
+      totalSteps,
+      completedSteps,
+      progressPercent: totalSteps === 0 ? 0 : Math.round((completedSteps / totalSteps) * 100),
+      steps: payload.steps,
+    };
+  }
+
+  private parseImplementationChecklist(details: unknown): ImplementationChecklist | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<ImplementationChecklist>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      typeof value.requestId !== "string" ||
+      typeof value.totalSteps !== "number" ||
+      typeof value.completedSteps !== "number" ||
+      typeof value.progressPercent !== "number" ||
+      !Array.isArray(value.steps)
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "conflict_requires_refresh", "transaction_error"] as const;
+    const isStatus = (item: unknown): item is ImplementationChecklist["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isStatus(value.status)) {
+      return null;
+    }
+
+    const allowedStepStatuses = ["pending", "in_progress", "done"] as const;
+    const isStepStatus = (item: unknown): item is ImplementationChecklistStep["status"] =>
+      typeof item === "string" && (allowedStepStatuses as readonly string[]).includes(item);
+    const steps = value.steps
+      .filter(
+        (step): step is ImplementationChecklistStep =>
+          typeof step === "object" &&
+          step !== null &&
+          typeof (step as Record<string, unknown>).id === "string" &&
+          typeof (step as Record<string, unknown>).title === "string" &&
+          (step as Record<string, unknown>).sourceType !== undefined &&
+          typeof (step as Record<string, unknown>).sourceRef === "string" &&
+          isStepStatus((step as Record<string, unknown>).status),
+      )
+      .map((step): ImplementationChecklistStep => ({
+        id: step.id,
+        title: step.title,
+        sourceType: step.sourceType === "campaign" ? "campaign" : "flow",
+        sourceRef: step.sourceRef,
+        status: step.status,
+        completedAt:
+          step.completedAt instanceof Date
+            ? step.completedAt
+            : step.completedAt
+              ? new Date(step.completedAt as unknown as string)
+              : null,
+      }));
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      requestId: value.requestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      updatedAt:
+        value.updatedAt instanceof Date
+          ? value.updatedAt
+          : new Date((value.updatedAt as string | undefined) ?? Date.now()),
+      totalSteps: value.totalSteps,
+      completedSteps: value.completedSteps,
+      progressPercent: value.progressPercent,
+      steps,
+    };
+  }
+
+  private parseLatestImplementationChecklist(
+    records: Array<{ details: unknown }>,
+  ): ImplementationChecklist | null {
+    for (const record of records) {
+      const parsed = this.parseImplementationChecklist(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private slugify(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
   }
 
   private collectMissingContext(

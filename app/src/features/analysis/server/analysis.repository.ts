@@ -455,6 +455,32 @@ export class AnalysisRepository {
     });
   }
 
+  listLatestImplementationChecklistAudit(
+    clientId: string,
+    limit = 20,
+  ): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: {
+          in: [
+            "implementation.checklist.generated",
+            "implementation.checklist.step_updated",
+          ],
+        },
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
+      },
+    });
+  }
+
   listClientIds() {
     return this.database.clientProfile.findMany({
       where: { status: "ACTIVE" },

@@ -20,6 +20,9 @@ import {
   getLatestEmailDraftSchema,
   generatePersonalizedEmailDraftSchema,
   getLatestPersonalizedEmailDraftSchema,
+  generateImplementationChecklistSchema,
+  getLatestImplementationChecklistSchema,
+  updateImplementationChecklistStepSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -45,6 +48,9 @@ type AnalysisServiceContract = Pick<
   | "getLatestEmailDraft"
   | "generatePersonalizedEmailDraft"
   | "getLatestPersonalizedEmailDraft"
+  | "generateImplementationChecklist"
+  | "getLatestImplementationChecklist"
+  | "updateImplementationChecklistStep"
 >;
 
 export const createAnalysisRouter = (
@@ -320,6 +326,48 @@ export const createAnalysisRouter = (
           return await analysisService.getLatestPersonalizedEmailDraft(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generateImplementationChecklist: protectedProcedure
+      .input(generateImplementationChecklistSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generateImplementationChecklist(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestImplementationChecklist: protectedProcedure
+      .input(getLatestImplementationChecklistSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestImplementationChecklist(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    updateImplementationChecklistStep: protectedProcedure
+      .input(updateImplementationChecklistStepSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.updateImplementationChecklistStep(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "OPERATIONS",
             input,
           );
         } catch (error) {

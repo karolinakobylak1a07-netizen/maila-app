@@ -305,6 +305,50 @@ export const generatePersonalizedEmailDraftSchema = z.object({
 export const getLatestPersonalizedEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const implementationChecklistStepStatusSchema = z.enum([
+  "pending",
+  "in_progress",
+  "done",
+]);
+export const implementationChecklistStatusSchema = z.enum([
+  "ok",
+  "conflict_requires_refresh",
+  "transaction_error",
+]);
+export const implementationChecklistStepSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  sourceType: z.enum(["flow", "campaign"]),
+  sourceRef: z.string().min(1),
+  status: implementationChecklistStepStatusSchema,
+  completedAt: z.date().nullable(),
+});
+export const implementationChecklistSchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: implementationChecklistStatusSchema,
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  updatedAt: z.date(),
+  totalSteps: z.number().int().min(0),
+  completedSteps: z.number().int().min(0),
+  progressPercent: z.number().int().min(0).max(100),
+  steps: z.array(implementationChecklistStepSchema),
+});
+export const generateImplementationChecklistSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestImplementationChecklistSchema = z.object({
+  clientId: z.string().cuid(),
+});
+export const updateImplementationChecklistStepSchema = z.object({
+  clientId: z.string().cuid(),
+  stepId: z.string().min(1),
+  status: implementationChecklistStepStatusSchema,
+  expectedVersion: z.number().int().positive(),
+  requestId: z.string().min(1).optional(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -322,6 +366,9 @@ export type GenerateEmailDraftSchema = z.infer<typeof generateEmailDraftSchema>;
 export type GetLatestEmailDraftSchema = z.infer<typeof getLatestEmailDraftSchema>;
 export type GeneratePersonalizedEmailDraftSchema = z.infer<typeof generatePersonalizedEmailDraftSchema>;
 export type GetLatestPersonalizedEmailDraftSchema = z.infer<typeof getLatestPersonalizedEmailDraftSchema>;
+export type GenerateImplementationChecklistSchema = z.infer<typeof generateImplementationChecklistSchema>;
+export type GetLatestImplementationChecklistSchema = z.infer<typeof getLatestImplementationChecklistSchema>;
+export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImplementationChecklistStepSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -401,3 +448,7 @@ export type EmailDraft = z.infer<typeof emailDraftSchema>;
 export type PersonalizedDraftStatus = z.infer<typeof personalizedDraftStatusSchema>;
 export type PersonalizedDraftVariant = z.infer<typeof personalizedDraftVariantSchema>;
 export type PersonalizedEmailDraft = z.infer<typeof personalizedEmailDraftSchema>;
+export type ImplementationChecklistStepStatus = z.infer<typeof implementationChecklistStepStatusSchema>;
+export type ImplementationChecklistStatus = z.infer<typeof implementationChecklistStatusSchema>;
+export type ImplementationChecklistStep = z.infer<typeof implementationChecklistStepSchema>;
+export type ImplementationChecklist = z.infer<typeof implementationChecklistSchema>;

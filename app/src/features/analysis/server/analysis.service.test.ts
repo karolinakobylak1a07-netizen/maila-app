@@ -30,6 +30,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestCommunicationBriefAudit: vi.fn(),
       listLatestEmailDraftAudit: vi.fn(),
       listLatestPersonalizedEmailDraftAudit: vi.fn(),
+      listLatestImplementationChecklistAudit: vi.fn(),
       withStrategyGenerationLock: async <T>(_clientId: string, handler: () => Promise<T>) => handler(),
     };
     mockAdapter = {
@@ -1511,6 +1512,176 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.personalizedDraft.status).toBe("failed_generation");
       expect(result.data.personalizedDraft.requestId).toBe("personalized-3");
       expect(result.data.personalizedDraft.variants).toHaveLength(0);
+    });
+  });
+
+  describe("implementation checklist orchestration (Story 5.1)", () => {
+    it("generates checklist with step statuses and progress from flow/campaign plans (AC1)", async () => {
+      const now = new Date("2026-02-10T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "f1",
+          requestId: "flow-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Welcome flow",
+                trigger: "Signup",
+                objective: "Activate",
+                priority: "HIGH",
+                businessReason: "Core conversion path",
+              },
+            ],
+            requestId: "flow-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "c1",
+          requestId: "calendar-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "NEWSLETTER",
+                goal: "Konwersja",
+                segment: "VIP",
+                title: "Start Q1",
+              },
+            ],
+            requestId: "calendar-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateImplementationChecklist("u1", "OPERATIONS", {
+        clientId: "client-1",
+        requestId: "checklist-1",
+      });
+
+      expect(result.data.checklist.status).toBe("ok");
+      expect(result.data.checklist.totalSteps).toBeGreaterThanOrEqual(2);
+      expect(result.data.checklist.completedSteps).toBe(0);
+      expect(result.data.checklist.steps.every((step) => step.status === "pending")).toBe(true);
+      expect(result.data.checklist.progressPercent).toBe(0);
+    });
+
+    it("returns conflict_requires_refresh when expectedVersion is stale (AC2)", async () => {
+      const now = new Date("2026-02-10T13:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([
+        {
+          id: "i1",
+          requestId: "checklist-v2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 2,
+            status: "ok",
+            requestId: "checklist-v2",
+            generatedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            totalSteps: 1,
+            completedSteps: 0,
+            progressPercent: 0,
+            steps: [
+              {
+                id: "flow-1-welcome-flow",
+                title: "Wdrozyc flow: Welcome flow",
+                sourceType: "flow",
+                sourceRef: "Welcome flow",
+                status: "pending",
+                completedAt: null,
+              },
+            ],
+          },
+        },
+      ]);
+
+      const result = await analysisService.updateImplementationChecklistStep("u1", "OPERATIONS", {
+        clientId: "client-1",
+        stepId: "flow-1-welcome-flow",
+        status: "done",
+        expectedVersion: 1,
+        requestId: "checklist-update-conflict",
+      });
+
+      expect(result.data.checklist.status).toBe("conflict_requires_refresh");
+      expect(result.data.checklist.version).toBe(2);
+      expect(result.data.checklist.steps[0]?.status).toBe("pending");
+    });
+
+    it("returns transaction_error and preserves previous step state on save failure (AC3)", async () => {
+      const now = new Date("2026-02-10T14:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "IMPLEMENTATION", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([
+        {
+          id: "i2",
+          requestId: "checklist-v3",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 3,
+            status: "ok",
+            requestId: "checklist-v3",
+            generatedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            totalSteps: 1,
+            completedSteps: 0,
+            progressPercent: 0,
+            steps: [
+              {
+                id: "campaign-1-week-1",
+                title: "Skonfigurowac kampanie: Start Q1",
+                sourceType: "campaign",
+                sourceRef: "week-1",
+                status: "pending",
+                completedAt: null,
+              },
+            ],
+          },
+        },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockRejectedValue(new Error("tx_error"));
+
+      const result = await analysisService.updateImplementationChecklistStep("u1", "OPERATIONS", {
+        clientId: "client-1",
+        stepId: "campaign-1-week-1",
+        status: "done",
+        expectedVersion: 3,
+        requestId: "checklist-update-fail",
+      });
+
+      expect(result.data.checklist.status).toBe("transaction_error");
+      expect(result.data.checklist.version).toBe(3);
+      expect(result.data.checklist.steps[0]?.status).toBe("pending");
+      expect(result.data.checklist.steps[0]?.completedAt).toBeNull();
     });
   });
 });
