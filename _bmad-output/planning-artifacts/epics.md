@@ -977,3 +977,21 @@ So that moge ocenic skutecznosc strategii i szybciej wykryc obszary o niskim zaa
 **When** generowana jest analiza
 **Then** zwracane jest podsumowanie per segment i per strategy recommendation
 **And** top performers oraz status `ok` / `low_engagement` / `missing_data`.
+
+### Story 7.4: Aktualizacja rekomendacji na podstawie feedbacku i KPI
+
+As a Owner/Strategy user,
+I want automatycznie aktualizowac rekomendacje komunikacyjne,
+So that aktywna wersja rekomendacji odzwierciedla realna skutecznosc i feedback.
+
+**Acceptance Criteria:**
+
+**Given** system ma feedback i KPI strategii
+**When** wywoluje `updateStrategyRecommendations`
+**Then** oblicza `blended_score = feedback_score + performance_score`
+**And** porownuje wynik z progiem.
+
+**Given** blended score jest ponizej progu
+**When** uruchamiana jest aktualizacja
+**Then** stara rekomendacja jest oznaczona jako deprecated
+**And** tworzona jest nowa aktywna wersja (v2/v3...) z ulepszeniami segment/CTA/headline.
