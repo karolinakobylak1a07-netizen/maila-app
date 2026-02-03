@@ -941,3 +941,21 @@ So that system ma sygnal o jakosci, przydatnosci i trafnosci wygenerowanych wyni
 **When** payload jest niepoprawny (np. rating poza zakresem)
 **Then** system zwraca blad walidacji
 **And** nie zapisuje wpisu auditowego.
+
+### Story 7.2: Analiza skutecznosci kampanii
+
+As a Owner/Strategy user,
+I want analizowac skutecznosc kampanii na podstawie KPI i feedbacku do artefaktow,
+So that moge szybciej wykryc co dziala i co wymaga poprawy.
+
+**Acceptance Criteria:**
+
+**Given** dostepne sa logi KPI kampanii i feedback do rekomendacji/draftow
+**When** wywoluje `getCampaignEffectivenessAnalysis` dla zakresu dat
+**Then** system agreguje metryki (open rate, click rate, revenue, conversions)
+**And** laczy je z feedbackiem oraz zwraca `performance_score`, `feedback_score`, `blended_score`.
+
+**Given** dane sa niekompletne
+**When** analiza nie ma KPI lub feedbacku w zakresie
+**Then** status jest `insufficient_data`
+**And** wynik zawiera wskazowki co uzupelnic.
