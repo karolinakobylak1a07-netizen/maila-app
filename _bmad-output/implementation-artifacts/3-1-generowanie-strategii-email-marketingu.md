@@ -1,6 +1,6 @@
 # Story 3.1: Generowanie strategii email marketingu
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -93,3 +93,7 @@ so that zespol pracuje na jednym, spojnym kierunku.
 - Usunieto redundantny check preconditions po gate.
 - Dodano audit log dla `blocked_preconditions` z `clientId`, `missingPreconditions`, `requestId`, `timestamp`.
 - Rozszerzono testy preconditions o scenariusze: multi-condition, single-condition i edge combination.
+
+## Completion Notes
+
+Story 3.1 zostalo zamkniete po post-review patchu i walidacji test/typecheck/lint. Zmiany review sa udokumentowane w commicie `065c1b6`.
