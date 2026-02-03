@@ -919,3 +919,25 @@ So that utrzymuje spojnosc operacyjna poza aplikacja.
 **When** wysyla zadanie eksportu
 **Then** system odrzuca operacje kodem "forbidden"
 **And** nie generuje linku udostepnienia.
+
+## Epic 7: Feedback Loop & Continuous Improvement
+
+Zespol moze zbierac i analizowac feedback do rekomendacji oraz draftow, aby poprawiac jakosc kolejnych artefaktow.
+
+### Story 7.1: Zbieranie feedbacku do rekomendacji
+
+As a Owner/Strategy/Content user,
+I want dodawac ocene i komentarz do rekomendacji oraz draftow,
+So that system ma sygnal o jakosci, przydatnosci i trafnosci wygenerowanych wynikow.
+
+**Acceptance Criteria:**
+
+**Given** widoczna jest rekomendacja lub draft w workspace klienta
+**When** uzytkownik wybiera ocene 1-5 i zapisuje komentarz
+**Then** system zapisuje feedback powiazany z `clientId`, `artifactId` i `requestId`
+**And** zapis obejmuje `timestamp`, `userId`, `rating`, `comment`.
+
+**Given** API feedbacku jest wywolywane
+**When** payload jest niepoprawny (np. rating poza zakresem)
+**Then** system zwraca blad walidacji
+**And** nie zapisuje wpisu auditowego.
