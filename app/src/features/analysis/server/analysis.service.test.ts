@@ -28,6 +28,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestSegmentProposalAudit: vi.fn(),
       listLatestCommunicationBriefAudit: vi.fn(),
       listLatestEmailDraftAudit: vi.fn(),
+      listLatestPersonalizedEmailDraftAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -1205,6 +1206,187 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.draft.status).toBe("failed_generation");
       expect(result.data.draft.requestId).toBe("draft-req-3");
       expect(result.data.draft.retryable).toBe(false);
+    });
+  });
+
+  describe("generatePersonalizedEmailDraft (Story 4.3)", () => {
+    it("returns segment-personalized variants when draft and segments are available (AC1)", async () => {
+      const now = new Date("2026-02-09T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([
+        {
+          id: "d1",
+          requestId: "draft-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            subject: "Temat bazowy",
+            preheader: "Preheader bazowy",
+            body: "Body bazowy",
+            cta: "Kup teraz",
+            requestId: "draft-1",
+            briefRequestId: "brief-1",
+            generatedAt: now.toISOString(),
+            retryable: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "segment-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            segments: [
+              {
+                name: "VIP",
+                entryCriteria: ["x"],
+                objective: "obj",
+                campaignUseCase: "camp",
+                flowUseCase: "flow",
+              },
+              {
+                name: "Nowi",
+                entryCriteria: ["y"],
+                objective: "obj",
+                campaignUseCase: "camp",
+                flowUseCase: "flow",
+              },
+            ],
+            requestId: "segment-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            missingData: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestPersonalizedEmailDraftAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generatePersonalizedEmailDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        requestId: "personalized-1",
+      });
+
+      expect(result.data.personalizedDraft.status).toBe("ok");
+      expect(result.data.personalizedDraft.variants.length).toBeGreaterThanOrEqual(2);
+      expect(result.data.personalizedDraft.variants[0]?.segment).toBe("VIP");
+    });
+
+    it("returns segment_data_missing when segments are unavailable (AC2)", async () => {
+      const now = new Date("2026-02-09T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([
+        {
+          id: "d2",
+          requestId: "draft-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            subject: "Temat bazowy",
+            preheader: "Preheader bazowy",
+            body: "Body bazowy",
+            cta: "Kup teraz",
+            requestId: "draft-2",
+            briefRequestId: "brief-2",
+            generatedAt: now.toISOString(),
+            retryable: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestPersonalizedEmailDraftAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.generatePersonalizedEmailDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        requestId: "personalized-2",
+      });
+
+      expect(result.data.personalizedDraft.status).toBe("segment_data_missing");
+      expect(result.data.personalizedDraft.variants).toHaveLength(0);
+    });
+
+    it("returns failed_generation with requestId on persist error (AC3)", async () => {
+      const now = new Date("2026-02-09T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([
+        {
+          id: "d3",
+          requestId: "draft-3",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            subject: "Temat bazowy",
+            preheader: "Preheader bazowy",
+            body: "Body bazowy",
+            cta: "Kup teraz",
+            requestId: "draft-3",
+            briefRequestId: "brief-3",
+            generatedAt: now.toISOString(),
+            retryable: false,
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s3",
+          requestId: "segment-3",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            segments: [
+              {
+                name: "VIP",
+                entryCriteria: ["x"],
+                objective: "obj",
+                campaignUseCase: "camp",
+                flowUseCase: "flow",
+              },
+            ],
+            requestId: "segment-3",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            missingData: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestPersonalizedEmailDraftAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockRejectedValue(new Error("persist_fail"));
+
+      const result = await analysisService.generatePersonalizedEmailDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        requestId: "personalized-3",
+      });
+
+      expect(result.data.personalizedDraft.status).toBe("failed_generation");
+      expect(result.data.personalizedDraft.requestId).toBe("personalized-3");
+      expect(result.data.personalizedDraft.variants).toHaveLength(0);
     });
   });
 });

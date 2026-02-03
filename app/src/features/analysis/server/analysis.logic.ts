@@ -6,6 +6,8 @@ import type {
   CampaignCalendarItem,
   CommunicationBrief,
   EmailDraft,
+  PersonalizedEmailDraft,
+  PersonalizedDraftVariant,
   EmailStrategy,
   FlowPlan,
   FlowPlanItem,
@@ -278,6 +280,34 @@ export interface GenerateEmailDraftOutput {
 export interface GetLatestEmailDraftOutput {
   data: {
     draft: EmailDraft | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GeneratePersonalizedEmailDraftInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestPersonalizedEmailDraftInput {
+  clientId: string;
+}
+
+export interface GeneratePersonalizedEmailDraftOutput {
+  data: {
+    personalizedDraft: PersonalizedEmailDraft;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestPersonalizedEmailDraftOutput {
+  data: {
+    personalizedDraft: PersonalizedEmailDraft | null;
   };
   meta: {
     requestId: string;
@@ -1166,6 +1196,110 @@ export class AnalysisService {
     const draft = this.parseLatestEmailDraft(records) ?? null;
     return {
       data: { draft },
+      meta: { requestId },
+    };
+  }
+
+  async generatePersonalizedEmailDraft(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GeneratePersonalizedEmailDraftInput,
+  ): Promise<GeneratePersonalizedEmailDraftOutput> {
+    const requestId = input.requestId ?? `email-draft-personalized-${Date.now()}`;
+    await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
+
+    const [draftRecords, segmentRecords, personalizedRecords] = await Promise.all([
+      this.repository.listLatestEmailDraftAudit(input.clientId, 20),
+      this.repository.listLatestSegmentProposalAudit(input.clientId, 20),
+      this.repository.listLatestPersonalizedEmailDraftAudit(input.clientId, 20),
+    ]);
+    const latestDraft = this.parseLatestEmailDraft(draftRecords);
+    const latestSegmentProposal = this.parseLatestSegmentProposal(segmentRecords);
+    const latestPersonalizedDraft = this.parseLatestPersonalizedEmailDraft(personalizedRecords);
+    const nextVersion = (latestPersonalizedDraft?.version ?? 0) + 1;
+
+    if (
+      !latestDraft ||
+      latestDraft.status !== "ok" ||
+      !latestSegmentProposal ||
+      latestSegmentProposal.status !== "ok" ||
+      latestSegmentProposal.segments.length === 0
+    ) {
+      const personalizedDraft = this.buildPersonalizedEmailDraftRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "segment_data_missing",
+        campaignGoal: latestDraft?.campaignGoal ?? "missing_campaign_goal",
+        baseDraftRequestId: latestDraft?.requestId ?? "missing-draft",
+        requestId,
+        variants: [],
+      });
+      return {
+        data: { personalizedDraft },
+        meta: { generatedAt: personalizedDraft.generatedAt, requestId },
+      };
+    }
+
+    const variants = latestSegmentProposal.segments.slice(0, 4).map((segment) =>
+      this.buildPersonalizedVariant({
+        baseDraft: latestDraft,
+        segmentName: segment.name,
+      }),
+    );
+
+    const personalizedDraft = this.buildPersonalizedEmailDraftRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      campaignGoal: latestDraft.campaignGoal,
+      baseDraftRequestId: latestDraft.requestId,
+      requestId,
+      variants,
+    });
+
+    try {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "content.email_draft.personalized",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: personalizedDraft,
+      });
+    } catch {
+      return {
+        data: {
+          personalizedDraft: this.buildPersonalizedEmailDraftRecord({
+            clientId: input.clientId,
+            version: nextVersion,
+            status: "failed_generation",
+            campaignGoal: latestDraft.campaignGoal,
+            baseDraftRequestId: latestDraft.requestId,
+            requestId,
+            variants: [],
+          }),
+        },
+        meta: { generatedAt: new Date(), requestId },
+      };
+    }
+
+    return {
+      data: { personalizedDraft },
+      meta: { generatedAt: personalizedDraft.generatedAt, requestId },
+    };
+  }
+
+  async getLatestPersonalizedEmailDraft(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GetLatestPersonalizedEmailDraftInput,
+  ): Promise<GetLatestPersonalizedEmailDraftOutput> {
+    const requestId = `email-draft-personalized-latest-${Date.now()}`;
+    await this.validateContentBriefReadAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestPersonalizedEmailDraftAudit(input.clientId, 20);
+    const personalizedDraft = this.parseLatestPersonalizedEmailDraft(records) ?? null;
+    return {
+      data: { personalizedDraft },
       meta: { requestId },
     };
   }
@@ -2172,6 +2306,111 @@ export class AnalysisService {
   private parseLatestEmailDraft(records: Array<{ details: unknown }>): EmailDraft | null {
     for (const record of records) {
       const parsed = this.parseEmailDraft(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildPersonalizedVariant(payload: {
+    baseDraft: EmailDraft;
+    segmentName: string;
+  }): PersonalizedDraftVariant {
+    return {
+      segment: payload.segmentName,
+      subject: `${payload.baseDraft.subject} [${payload.segmentName}]`,
+      preheader: `${payload.baseDraft.preheader} • Segment: ${payload.segmentName}`,
+      body: `${payload.baseDraft.body}\n\nSekcja personalizowana dla segmentu: ${payload.segmentName}.`,
+      cta: `${payload.baseDraft.cta} (${payload.segmentName})`,
+    };
+  }
+
+  private buildPersonalizedEmailDraftRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "segment_data_missing" | "failed_generation";
+    campaignGoal: string;
+    baseDraftRequestId: string;
+    requestId: string;
+    variants: PersonalizedDraftVariant[];
+  }): PersonalizedEmailDraft {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      campaignGoal: payload.campaignGoal,
+      baseDraftRequestId: payload.baseDraftRequestId,
+      requestId: payload.requestId,
+      generatedAt: new Date(),
+      variants: payload.variants,
+    };
+  }
+
+  private parsePersonalizedEmailDraft(details: unknown): PersonalizedEmailDraft | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<PersonalizedEmailDraft>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      typeof value.campaignGoal !== "string" ||
+      typeof value.baseDraftRequestId !== "string" ||
+      typeof value.requestId !== "string" ||
+      !Array.isArray(value.variants)
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "segment_data_missing", "failed_generation"] as const;
+    const isStatus = (item: unknown): item is PersonalizedEmailDraft["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isStatus(value.status)) {
+      return null;
+    }
+
+    const variants = value.variants
+      .filter(
+        (item): item is PersonalizedDraftVariant =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).segment === "string" &&
+          typeof (item as Record<string, unknown>).subject === "string" &&
+          typeof (item as Record<string, unknown>).preheader === "string" &&
+          typeof (item as Record<string, unknown>).body === "string" &&
+          typeof (item as Record<string, unknown>).cta === "string",
+      )
+      .map((item) => ({
+        segment: item.segment,
+        subject: item.subject,
+        preheader: item.preheader,
+        body: item.body,
+        cta: item.cta,
+      }));
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      campaignGoal: value.campaignGoal,
+      baseDraftRequestId: value.baseDraftRequestId,
+      requestId: value.requestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      variants,
+    };
+  }
+
+  private parseLatestPersonalizedEmailDraft(
+    records: Array<{ details: unknown }>,
+  ): PersonalizedEmailDraft | null {
+    for (const record of records) {
+      const parsed = this.parsePersonalizedEmailDraft(record.details);
       if (parsed) {
         return parsed;
       }

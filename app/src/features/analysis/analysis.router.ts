@@ -18,6 +18,8 @@ import {
   getLatestCommunicationBriefSchema,
   generateEmailDraftSchema,
   getLatestEmailDraftSchema,
+  generatePersonalizedEmailDraftSchema,
+  getLatestPersonalizedEmailDraftSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -41,6 +43,8 @@ type AnalysisServiceContract = Pick<
   | "getLatestCommunicationBrief"
   | "generateEmailDraft"
   | "getLatestEmailDraft"
+  | "generatePersonalizedEmailDraft"
+  | "getLatestPersonalizedEmailDraft"
 >;
 
 export const createAnalysisRouter = (
@@ -286,6 +290,34 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getLatestEmailDraft(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generatePersonalizedEmailDraft: protectedProcedure
+      .input(generatePersonalizedEmailDraftSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generatePersonalizedEmailDraft(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestPersonalizedEmailDraft: protectedProcedure
+      .input(getLatestPersonalizedEmailDraftSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestPersonalizedEmailDraft(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT",
             input,

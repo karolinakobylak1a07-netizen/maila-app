@@ -34,6 +34,7 @@ import { CampaignCalendarCard } from "~/features/analysis/components/campaign-ca
 import { SegmentProposalCard } from "~/features/analysis/components/segment-proposal-card";
 import { CommunicationBriefCard } from "~/features/analysis/components/communication-brief-card";
 import { EmailDraftCard } from "~/features/analysis/components/email-draft-card";
+import { PersonalizedEmailDraftCard } from "~/features/analysis/components/personalized-email-draft-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -98,6 +99,8 @@ export function ClientsWorkspace() {
   const [communicationBriefLoading, setCommunicationBriefLoading] = useState(false);
   const [emailDraftError, setEmailDraftError] = useState<string | null>(null);
   const [emailDraftLoading, setEmailDraftLoading] = useState(false);
+  const [personalizedDraftError, setPersonalizedDraftError] = useState<string | null>(null);
+  const [personalizedDraftLoading, setPersonalizedDraftLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -224,6 +227,16 @@ export function ClientsWorkspace() {
     },
   );
   const generateEmailDraftMutation = api.analysis.generateEmailDraft.useMutation();
+  const latestPersonalizedDraftQuery = api.analysis.getLatestPersonalizedEmailDraft.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generatePersonalizedDraftMutation = api.analysis.generatePersonalizedEmailDraft.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -293,6 +306,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestSegmentProposal.invalidate(),
       utils.analysis.getLatestCommunicationBrief.invalidate(),
       utils.analysis.getLatestEmailDraft.invalidate(),
+      utils.analysis.getLatestPersonalizedEmailDraft.invalidate(),
     ]);
   };
 
@@ -760,6 +774,30 @@ export function ClientsWorkspace() {
     setEmailDraftError(null);
   }, [latestEmailDraftQuery.isLoading, latestEmailDraftQuery.isError, latestEmailDraftQuery.error]);
 
+  useEffect(() => {
+    if (latestPersonalizedDraftQuery.isLoading) {
+      setPersonalizedDraftLoading(true);
+      setPersonalizedDraftError(null);
+      return;
+    }
+
+    if (latestPersonalizedDraftQuery.isError) {
+      setPersonalizedDraftLoading(false);
+      const requestId = extractRequestId(latestPersonalizedDraftQuery.error);
+      setPersonalizedDraftError(
+        withRequestId("Nie udalo sie pobrac personalizacji draftu.", requestId),
+      );
+      return;
+    }
+
+    setPersonalizedDraftLoading(false);
+    setPersonalizedDraftError(null);
+  }, [
+    latestPersonalizedDraftQuery.isLoading,
+    latestPersonalizedDraftQuery.isError,
+    latestPersonalizedDraftQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -852,6 +890,25 @@ export function ClientsWorkspace() {
     } catch (error) {
       setEmailDraftError(
         withRequestId("Nie udalo sie wygenerowac draftu email.", extractRequestId(error)),
+      );
+    }
+  };
+
+  const generatePersonalizedDraft = async () => {
+    if (!activeClientId) {
+      setPersonalizedDraftError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generatePersonalizedDraftMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setPersonalizedDraftError(
+        withRequestId(
+          "Nie udalo sie wygenerowac personalizacji draftu.",
+          extractRequestId(error),
+        ),
       );
     }
   };
@@ -1013,6 +1070,19 @@ export function ClientsWorkspace() {
             }
             draft={latestEmailDraftQuery.data?.data.draft ?? null}
             onGenerate={generateEmailDraft}
+          />
+        </div>
+        <div className="mt-4">
+          <PersonalizedEmailDraftCard
+            loading={personalizedDraftLoading}
+            generating={generatePersonalizedDraftMutation.isPending}
+            error={personalizedDraftError}
+            requestId={
+              latestPersonalizedDraftQuery.data?.meta.requestId ??
+              extractRequestId(latestPersonalizedDraftQuery.error)
+            }
+            personalizedDraft={latestPersonalizedDraftQuery.data?.data.personalizedDraft ?? null}
+            onGenerate={generatePersonalizedDraft}
           />
         </div>
         </div>
