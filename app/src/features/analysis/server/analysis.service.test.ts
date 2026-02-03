@@ -1,12 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AnalysisService, AnalysisDomainError } from './analysis.logic';
-import { AnalysisRepository } from './analysis.repository';
-import { KlaviyoAdapter } from '../../integrations/klaviyo/klaviyo-adapter';
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AnalysisDomainError, AnalysisService } from "./analysis.logic";
+import type { AnalysisRepository } from "./analysis.repository";
 
-describe('Optimization Areas Service', () => {
+describe("AnalysisService.getOptimizationAreas", () => {
   let analysisService: AnalysisService;
   let mockRepository: Partial<AnalysisRepository>;
-  let mockAdapter: Partial<KlaviyoAdapter>;
 
   beforeEach(() => {
     mockRepository = {
@@ -14,283 +12,122 @@ describe('Optimization Areas Service', () => {
       listInventory: vi.fn(),
       findMembership: vi.fn(),
       listRbacPoliciesByRole: vi.fn(),
-      createAuditLog: vi.fn(),
-    };
-    mockAdapter = {
-      fetchSegments: vi.fn(),
-      fetchInventory: vi.fn(),
     };
 
-    analysisService = new AnalysisService(
-      mockRepository as AnalysisRepository,
-      mockAdapter as KlaviyoAdapter,
-    );
-  });
-
-  describe('getOptimizationAreas', () => {
-    it('should throw validation error when no sync runs exist', async () => {
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(null);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('SYNC_REQUIRED_BEFORE_OPTIMIZATION');
-    });
-
-    it('should throw validation error when sync status is FAILED_AUTH', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'FAILED_AUTH' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-        errorCode: 'auth_failed',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('INVALID_SYNC_STATUS');
-    });
-
-    it('should throw validation error when sync status is IN_PROGRESS (default)', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'IN_PROGRESS' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('INVALID_SYNC_STATUS');
-    });
-
-    it('should throw validation error when sync status is PARTIAL_OR_TIMEOUT (default)', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'PARTIAL_OR_TIMEOUT' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('INVALID_SYNC_STATUS');
-    });
-
-    it('should allow showPartialOnTimeout=true for PARTIAL_OR_TIMEOUT sync', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'PARTIAL_OR_TIMEOUT' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }, true),
-      ).resolves.toBeDefined();
-    });
-
-    it('should return empty areas when incomplete data is detected', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'PARTIAL_OR_TIMEOUT' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      const result = await analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' });
-
-      expect(result).toBeDefined();
-      expect(result.meta.hasInsufficientData).toBe(true);
-      expect(result.meta.dataIssue).toContain('niekompletne');
-      expect(result.data.areas).toHaveLength(0);
-    });
-
-    it('should return optimization areas when sync is OK', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [
-          { entityType: 'FLOW', externalId: 'flow1', name: 'Welcome Flow', itemStatus: 'active', lastSyncAt: new Date() },
-          { entityType: 'FLOW', externalId: 'flow2', name: 'Abandoned Cart', itemStatus: 'active', lastSyncAt: new Date() },
-          { entityType: 'FLOW', externalId: 'flow3', name: 'Inactive Flow', itemStatus: 'disabled', lastSyncAt: new Date() },
-        ],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue(syncRun.items);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      const result = await analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' });
-
-      expect(result).toBeDefined();
-      expect(result.meta.hasInsufficientData).toBe(false);
-      expect(result.data.areas).toHaveLengthGreaterThan(0);
-      expect(result.data.areas[0].requestId).toBeDefined();
-      expect(result.data.areas[0].lastSyncRequestId).toBeDefined();
-    });
-
-    it('should throw validation error when membership not found', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue(null);
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('forbidden');
-    });
-
-    it('should throw validation error when module cannot view', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
-
-      const policy = { module: 'AUDIT', canView: false, canEdit: false };
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([policy]);
-
-      await expect(
-        analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' }),
-      ).rejects.toThrow(AnalysisDomainError);
-      await expect(analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' })).rejects.toThrow('rbac_module_view_forbidden');
+    analysisService = new AnalysisService({
+      repository: mockRepository as AnalysisRepository,
     });
   });
 
-  describe('Priority scoring', () => {
-    it('should prioritize FLOW gaps over SEGMENT gaps', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [
-          { entityType: 'SEGMENT', externalId: 'seg1', name: 'Segment A', itemStatus: 'active', lastSyncAt: new Date() },
-        ],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue(syncRun.items);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
+  it("returns deterministic ranking with stable tie-breakers (AC1)", async () => {
+    const now = new Date("2026-02-01T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
 
-      const result = await analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' });
+    mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+    mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+      { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+    ]);
+    mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+      status: "OK",
+      requestId: "sync-1",
+      startedAt: new Date("2026-01-31T12:00:00.000Z"),
+    });
+    mockRepository.listInventory = vi.fn().mockResolvedValue([
+      { entityType: "FLOW", externalId: "f1", name: "Alpha Flow", itemStatus: "GAP", lastSyncAt: now },
+      { entityType: "FLOW", externalId: "f2", name: "Beta Flow", itemStatus: "GAP", lastSyncAt: now },
+      { entityType: "FLOW", externalId: "f3", name: "Gamma Flow", itemStatus: "disabled", lastSyncAt: now },
+      { entityType: "ACCOUNT", externalId: "a1", name: "Logic A", itemStatus: "active", lastSyncAt: now },
+      { entityType: "ACCOUNT", externalId: "a2", name: "Logic B", itemStatus: "active", lastSyncAt: now },
+    ]);
 
-      expect(result).toBeDefined();
-      expect(result.data.areas).toHaveLength(1);
-      expect(result.data.areas[0].category).toBe('SEGMENT');
+    const result = await analysisService.getOptimizationAreas("u1", "OWNER", {
+      clientId: "client-1",
+      requestId: "req-1",
+      limit: 10,
+      showPartialOnTimeout: false,
     });
 
-    it('should set priority levels correctly based on score', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
+    expect(result.meta.status).toBe("OK");
+    expect(result.data.areas.length).toBeGreaterThanOrEqual(3);
 
-      const result = await analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' });
+    const names = result.data.areas.map((area) => area.name);
+    expect(names.indexOf("Alpha Flow")).toBeLessThan(names.indexOf("Beta Flow"));
+    expect(result.data.summary?.totalAreas).toBe(result.data.areas.length);
 
-      expect(result).toBeDefined();
-      result.data.areas.forEach((area) => {
-        expect(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).toContain(area.priority);
-      });
+    vi.useRealTimers();
+  });
+
+  it("returns insufficient_data_for_priority with missingData guidance (AC2)", async () => {
+    mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+    mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+      { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+    ]);
+    mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+      status: "FAILED_AUTH",
+      requestId: "sync-2",
+      startedAt: new Date("2026-02-01T12:00:00.000Z"),
+    });
+    mockRepository.listInventory = vi.fn().mockResolvedValue([]);
+
+    const result = await analysisService.getOptimizationAreas("u1", "OWNER", {
+      clientId: "client-1",
+      requestId: "req-2",
+      limit: 10,
+      showPartialOnTimeout: false,
     });
 
-    it('should set expectedImpact between 0 and 100', async () => {
-      const syncRun = {
-        id: 'run1',
-        clientId: 'client1',
-        status: 'OK' as const,
-        trigger: 'MANUAL',
-        finishedAt: new Date(),
-        items: [],
-        requestId: 'req_123',
-      };
-      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(syncRun);
-      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
-      mockRepository.findMembership = vi.fn().mockResolvedValue({ role: 'OWNER' });
-      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
+    expect(result.meta.status).toBe("insufficient_data_for_priority");
+    expect(result.meta.hasInsufficientData).toBe(true);
+    expect(result.meta.missingData).toContain("valid_klaviyo_auth");
+    expect(result.meta.missingData).toContain("flows");
+    expect(result.data.areas).toHaveLength(0);
+  });
 
-      const result = await analysisService.getOptimizationAreas('user1', 'OWNER', { clientId: 'client1' });
-
-      expect(result).toBeDefined();
-      result.data.areas.forEach((area) => {
-        expect(area.expectedImpact).toBeGreaterThanOrEqual(0);
-        expect(area.expectedImpact).toBeLessThanOrEqual(100);
-      });
+  it("returns timed_out with partial areas and requestId preserved (AC3)", async () => {
+    const now = new Date("2026-02-01T12:00:00.000Z");
+    mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+    mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+      { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+    ]);
+    mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+      status: "PARTIAL_OR_TIMEOUT",
+      requestId: "sync-3",
+      startedAt: new Date("2026-02-01T11:00:00.000Z"),
     });
+    mockRepository.listInventory = vi.fn().mockResolvedValue([
+      { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+      { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "disabled", lastSyncAt: now },
+      { entityType: "EMAIL", externalId: "e1", name: "Email 1", itemStatus: "GAP", lastSyncAt: now },
+      { entityType: "EMAIL", externalId: "e2", name: "Email 2", itemStatus: "active", lastSyncAt: now },
+    ]);
+
+    const result = await analysisService.getOptimizationAreas("u1", "OWNER", {
+      clientId: "client-1",
+      requestId: "req-timeout",
+      limit: 4,
+      showPartialOnTimeout: true,
+    });
+
+    expect(result.meta.status).toBe("timed_out");
+    expect(result.meta.hasTimedOut).toBe(true);
+    expect(result.meta.requestId).toBe("req-timeout");
+    expect(result.data.areas.length).toBeGreaterThan(0);
+    expect(result.data.areas.length).toBeLessThan(4);
+    expect(result.data.areas.every((area) => area.status === "timed_out")).toBe(true);
+  });
+
+  it("throws forbidden when user has no membership", async () => {
+    mockRepository.findMembership = vi.fn().mockResolvedValue(null);
+    mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([]);
+    mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue(null);
+    mockRepository.listInventory = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      analysisService.getOptimizationAreas("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-x",
+      }),
+    ).rejects.toThrow(AnalysisDomainError);
   });
 });

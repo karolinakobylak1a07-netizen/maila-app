@@ -15,8 +15,8 @@ export const gapCategorySchema = z.enum(["FLOW", "SEGMENT", "LOGIC"]);
 export const optimizationStatusSchema = z.enum([
   "OK",
   "GAP",
-  "INSUFFICIENT_DATA",
-  "TIMED_OUT",
+  "insufficient_data_for_priority",
+  "timed_out",
 ]);
 export const expectedImpactSchema = z.number().min(0).max(100);
 export const priorityLevelSchema = z.enum([
@@ -41,7 +41,8 @@ export const optimizationAreaSchema = z.object({
 });
 
 export const getOptimizationAreasSchema = z.object({
-  requestId: z.string().min(1),
+  clientId: z.string().cuid().optional(),
+  requestId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(50).optional().default(10),
   showPartialOnTimeout: z.boolean().optional().default(true),
 });
@@ -59,6 +60,34 @@ export const getSyncStatusSchema = z.object({
 export const getGapReportSchema = z.object({
   clientId: z.string().cuid(),
 });
+
+export type GapItem = {
+  id: string;
+  category: "FLOW" | "SEGMENT" | "LOGIC";
+  status: "OK" | "GAP" | "INSUFFICIENT_DATA";
+  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  name: string;
+  reason: string;
+};
+
+export interface GapReportData {
+  items: GapItem[];
+  total: number;
+  gaps: number;
+  stale: number;
+  insufficient: number;
+}
+
+export interface GapReportMeta {
+  generatedAt: Date;
+  lastSyncRequestId: string;
+  hasStaleData: boolean;
+  requestId: string;
+}
+
+export type GetGapReportOutput =
+  | { data: GapReportData; meta: GapReportMeta }
+  | { error: { code: string; message: string; details?: Record<string, unknown>; requestId: string } };
 
 export type SyncTrigger = z.infer<typeof syncTriggerSchema>;
 export type KlaviyoEntityType = z.infer<typeof klaviyoEntityTypeSchema>;

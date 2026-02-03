@@ -1,17 +1,17 @@
 const mockRedis = {
-  get: vi.fn().mockResolvedValue(null),
-  set: vi.fn().mockResolvedValue('OK'),
-  expire: vi.fn().mockResolvedValue(1)
+  get: async () => null as string | null,
+  set: async () => 'OK',
+  expire: async () => 1,
 }
 
-export const redis = mockRedis as any
+export const redis = mockRedis
 
 export function resetRedisMock() {
-  mockRedis.get.mockResolvedValue(null)
-  mockRedis.set.mockResolvedValue('OK')
-  mockRedis.expire.mockResolvedValue(1)
+  mockRedis.get = async () => null
+  mockRedis.set = async () => 'OK'
+  mockRedis.expire = async () => 1
 }
 
 export function setRedisGetMock(value: string | null) {
-  mockRedis.get.mockResolvedValue(value)
+  mockRedis.get = async () => value
 }

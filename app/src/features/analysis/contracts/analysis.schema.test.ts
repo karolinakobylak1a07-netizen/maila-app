@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
 import {
   optimizationAreaSchema,
   optimizationStatusSchema,
@@ -11,7 +10,7 @@ import {
 describe('OptimizationArea Schema', () => {
   describe('optimizationStatusSchema', () => {
     it('should accept valid optimization statuses', () => {
-      const statuses = ['OK', 'GAP', 'INSUFFICIENT_DATA', 'TIMED_OUT'];
+      const statuses = ['OK', 'GAP', 'insufficient_data_for_priority', 'timed_out'];
       statuses.forEach((status) => {
         const result = optimizationStatusSchema.safeParse(status);
         expect(result.success).toBe(true);
@@ -30,11 +29,11 @@ describe('OptimizationArea Schema', () => {
     });
 
     it('should have the correct enum values', () => {
-      const enumValues = optimizationStatusSchema._def.value;
+      const enumValues = optimizationStatusSchema._def.values;
       expect(enumValues).toContain('OK');
       expect(enumValues).toContain('GAP');
-      expect(enumValues).toContain('INSUFFICIENT_DATA');
-      expect(enumValues).toContain('TIMED_OUT');
+      expect(enumValues).toContain('insufficient_data_for_priority');
+      expect(enumValues).toContain('timed_out');
       expect(enumValues.length).toBe(4);
     });
   });
@@ -88,7 +87,7 @@ describe('OptimizationArea Schema', () => {
     });
 
     it('should have the correct enum values', () => {
-      const enumValues = priorityLevelSchema._def.value;
+      const enumValues = priorityLevelSchema._def.values;
       expect(enumValues).toContain('CRITICAL');
       expect(enumValues).toContain('HIGH');
       expect(enumValues).toContain('MEDIUM');

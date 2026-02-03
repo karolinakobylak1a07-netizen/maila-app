@@ -26,10 +26,9 @@ export const createAnalysisRouter = (
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role),
             input,
-          ) as unknown as never;
+          );
         } catch (error) {
           mapAnalysisErrorToTRPC(error);
-          return null as never;
         }
       }),
 
@@ -39,12 +38,11 @@ export const createAnalysisRouter = (
         try {
           return await analysisService.getGapReport(
             ctx.session.user.id,
-            assertSessionRole(ctx.session.user.role),
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
             input,
           );
         } catch (error) {
           mapAnalysisErrorToTRPC(error);
-          return null as never;
         }
       }),
 
@@ -64,22 +62,25 @@ export const createAnalysisRouter = (
           );
         } catch (error) {
           mapAnalysisErrorToTRPC(error);
-          return null as never;
         }
       }),
 
     getOptimizationAreas: protectedProcedure
       .input(getOptimizationAreasSchema)
-      .query(async ({ ctx: _ctx, input }) => {
+      .query(async ({ ctx, input }) => {
         try {
-          return await analysisService.getOptimizationAreas({
-            requestId: input.requestId,
-            limit: input.limit,
-            showPartialOnTimeout: input.showPartialOnTimeout,
-          });
+          return await analysisService.getOptimizationAreas(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            {
+              clientId: input.clientId ?? input.requestId ?? "000000000000000000000000",
+              requestId: input.requestId,
+              limit: input.limit,
+              showPartialOnTimeout: input.showPartialOnTimeout,
+            },
+          );
         } catch (error) {
           mapAnalysisErrorToTRPC(error);
-          return null as never;
         }
       }),
   });

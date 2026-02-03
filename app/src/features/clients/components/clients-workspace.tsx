@@ -137,7 +137,7 @@ export function ClientsWorkspace() {
   );
   const optimizationQuery = api.analysis.getOptimizationAreas.useQuery(
     {
-      requestId: activeClientId ?? "000000000000000000000000",
+      clientId: activeClientId ?? "000000000000000000000000",
       limit: 10,
       showPartialOnTimeout: true,
     },
@@ -523,20 +523,19 @@ export function ClientsWorkspace() {
   }, [gapReportQuery.error]);
 
   useEffect(() => {
-    if (gapReportQuery.isLoading) {
+    if (optimizationQuery.isLoading) {
       setOptimizationLoading(true);
       setOptimizationError(null);
       return;
     }
 
-    if (gapReportQuery.isError) {
+    if (optimizationQuery.isError) {
       setOptimizationLoading(false);
-      const details = extractErrorDetails(gapReportQuery.error);
-      const requestId = extractRequestId(gapReportQuery.error);
+      const requestId = extractRequestId(optimizationQuery.error);
 
       setOptimizationError(
         withRequestId(
-          "Nie udalo sie pobrac priorytetow optymalizacji. Sprobuj ponownie po poprawnym sync.",
+          "Nie udalo sie pobrac priorytetow optymalizacji.",
           requestId,
         ),
       );
@@ -544,7 +543,7 @@ export function ClientsWorkspace() {
       setOptimizationLoading(false);
       setOptimizationError(null);
     }
-  }, [gapReportQuery.isLoading, gapReportQuery.isError, gapReportQuery.error]);
+  }, [optimizationQuery.isLoading, optimizationQuery.isError, optimizationQuery.error]);
 
   const discoveryProgress = useMemo(() => {
     const fromLocal = evaluateDiscoveryCompleteness(discoveryAnswers);
@@ -599,20 +598,28 @@ export function ClientsWorkspace() {
           forbidden={gapForbidden}
           staleWarning={Boolean(syncStatusQuery.data?.data?.stale)}
           activeClientId={activeClientId}
-          items={gapReportQuery.data?.data?.items ?? []}
-          lastSyncRequestId={gapReportQuery.data?.data?.lastSyncRequestId ?? null}
+          items={(gapReportQuery.data?.data?.items ?? []) as Array<{
+            id: string;
+            category: "FLOW" | "SEGMENT" | "LOGIC";
+            status: "OK" | "GAP" | "INSUFFICIENT_DATA";
+            priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+            name: string;
+            reason: string;
+          }>}
+          lastSyncRequestId={gapReportQuery.data?.meta?.lastSyncRequestId ?? null}
         />
         <div className="mt-4">
           <OptimizationPrioritiesList
             loading={optimizationLoading}
             error={optimizationError}
-            insufficientData={Boolean(gapReportQuery.data?.data?.hasInsufficientData)}
-            timedOut={Boolean(gapReportQuery.data?.data?.hasTimedOut)}
-            requestTime={gapReportQuery.data?.data?.requestTime}
-            requestId={optimizationQuery.data?.requestId ?? null}
-            lastSyncRequestId={gapReportQuery.data?.data?.lastSyncRequestId ?? optimizationQuery.data?.lastSyncRequestId ?? null}
-            optimizationAreas={optimizationQuery.data?.optimizationAreas ?? []}
-            summary={optimizationQuery.data?.summary ?? null}
+            insufficientData={Boolean(optimizationQuery.data?.meta.hasInsufficientData)}
+            timedOut={Boolean(optimizationQuery.data?.meta.hasTimedOut)}
+            requestTime={optimizationQuery.data?.meta.generatedAt.getTime()}
+            requestId={optimizationQuery.data?.meta.requestId ?? null}
+            lastSyncRequestId={optimizationQuery.data?.meta.lastSyncRequestId ?? gapReportQuery.data?.meta?.lastSyncRequestId ?? null}
+            missingData={optimizationQuery.data?.meta.missingData ?? []}
+            optimizationAreas={optimizationQuery.data?.data.areas ?? []}
+            summary={optimizationQuery.data?.data.summary ?? null}
           />
         </div>
         </div>
