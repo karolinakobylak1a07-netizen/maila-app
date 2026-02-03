@@ -6,13 +6,25 @@ import {
   syncNowSchema,
   getOptimizationAreasSchema,
   getContextInsightsSchema,
+  generateEmailStrategySchema,
+  getLatestEmailStrategySchema,
+  generateFlowPlanSchema,
+  getLatestFlowPlanSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
 
 type AnalysisServiceContract = Pick<
   AnalysisService,
-  "getGapReport" | "getSyncStatus" | "runSync" | "getOptimizationAreas" | "getContextInsights"
+  | "getGapReport"
+  | "getSyncStatus"
+  | "runSync"
+  | "getOptimizationAreas"
+  | "getContextInsights"
+  | "generateEmailStrategy"
+  | "getLatestEmailStrategy"
+  | "generateFlowPlan"
+  | "getLatestFlowPlan"
 >;
 
 export const createAnalysisRouter = (
@@ -90,6 +102,62 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getContextInsights(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generateEmailStrategy: protectedProcedure
+      .input(generateEmailStrategySchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generateEmailStrategy(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestEmailStrategy: protectedProcedure
+      .input(getLatestEmailStrategySchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestEmailStrategy(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generateFlowPlan: protectedProcedure
+      .input(generateFlowPlanSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generateFlowPlan(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestFlowPlan: protectedProcedure
+      .input(getLatestFlowPlanSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestFlowPlan(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
             input,

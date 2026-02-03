@@ -23,6 +23,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestStrategicPriorities: vi.fn(),
       findDiscoveryAnswers: vi.fn(),
       listLatestEmailStrategyAudit: vi.fn(),
+      listLatestFlowPlanAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -565,6 +566,112 @@ describe("AnalysisService.getOptimizationAreas", () => {
       });
       expect(second.data.strategy.status).toBe("in_progress_or_timeout");
       expect(second.data.strategy.requestId).toBe("req-strategy-timeout-1");
+    });
+  });
+
+  describe("generateFlowPlan (Story 3.2)", () => {
+    it("returns flow plan with items when approved strategy exists (AC1)", async () => {
+      const now = new Date("2026-02-04T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-ok-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome sequence", "Post purchase"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-ok-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateFlowPlan("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "flow-req-1",
+      });
+
+      expect(result.data.flowPlan.status).toBe("ok");
+      expect(result.data.flowPlan.items.length).toBeGreaterThan(0);
+      expect(result.data.flowPlan.items[0]?.trigger).toBeTruthy();
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "strategy.flow_plan.generated",
+          requestId: "flow-req-1",
+        }),
+      );
+    });
+
+    it("returns precondition_not_approved when strategy is missing or not approved (AC2)", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.generateFlowPlan("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "flow-req-2",
+      });
+
+      expect(result.data.flowPlan.status).toBe("precondition_not_approved");
+      expect(result.data.flowPlan.requiredStep).toBe("generate_and_approve_strategy");
+      expect(result.data.flowPlan.items).toHaveLength(0);
+    });
+
+    it("returns failed_persist when save to audit log fails (AC3)", async () => {
+      const now = new Date("2026-02-04T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-ok-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome sequence"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-ok-2",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockRejectedValue(new Error("persist_fail"));
+
+      const result = await analysisService.generateFlowPlan("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "flow-req-3",
+      });
+
+      expect(result.data.flowPlan.status).toBe("failed_persist");
+      expect(result.data.flowPlan.items).toHaveLength(0);
+      expect(result.data.flowPlan.requiredStep).toBe("retry_generate_flow_plan");
     });
   });
 });

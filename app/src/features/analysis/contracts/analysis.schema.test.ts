@@ -9,6 +9,12 @@ import {
   insightStatusSchema,
   insightActionabilitySchema,
   getContextInsightsSchema,
+  emailStrategySchema,
+  strategyGenerationStatusSchema,
+  generateEmailStrategySchema,
+  flowPlanSchema,
+  flowPlanStatusSchema,
+  generateFlowPlanSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -310,6 +316,67 @@ describe('OptimizationArea Schema', () => {
 
       expect(success.success).toBe(true);
       expect(fail.success).toBe(false);
+    });
+  });
+
+  describe('strategy and flow plan schemas', () => {
+    it('should parse strategy generation statuses', () => {
+      expect(strategyGenerationStatusSchema.safeParse('ok').success).toBe(true);
+      expect(strategyGenerationStatusSchema.safeParse('in_progress_or_timeout').success).toBe(true);
+      expect(strategyGenerationStatusSchema.safeParse('blocked_preconditions').success).toBe(true);
+    });
+
+    it('should parse valid email strategy payload', () => {
+      const result = emailStrategySchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        goals: ['Wzrost konwersji'],
+        segments: ['VIP'],
+        tone: 'konkretny',
+        priorities: ['Welcome'],
+        kpis: ['conversion_rate'],
+        requestId: 'req-strategy',
+        lastSyncRequestId: 'sync-1',
+        generatedAt: new Date('2026-02-04T12:00:00.000Z'),
+        missingPreconditions: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateEmailStrategy input', () => {
+      expect(generateEmailStrategySchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateEmailStrategySchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse flow plan statuses and payload', () => {
+      expect(flowPlanStatusSchema.safeParse('ok').success).toBe(true);
+      expect(flowPlanStatusSchema.safeParse('precondition_not_approved').success).toBe(true);
+      expect(flowPlanStatusSchema.safeParse('failed_persist').success).toBe(true);
+
+      const result = flowPlanSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        items: [
+          {
+            name: 'Flow 1',
+            trigger: 'signup',
+            objective: 'Wzrost konwersji',
+            priority: 'CRITICAL',
+            businessReason: 'Welcome sequence',
+          },
+        ],
+        requestId: 'req-flow',
+        strategyRequestId: 'req-strategy',
+        generatedAt: new Date('2026-02-04T12:00:00.000Z'),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateFlowPlan input', () => {
+      expect(generateFlowPlanSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateFlowPlanSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

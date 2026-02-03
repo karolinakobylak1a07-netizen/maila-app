@@ -3,6 +3,8 @@ import { db } from "~/server/db";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
   EmailStrategy,
+  FlowPlan,
+  FlowPlanItem,
   InsightItem,
   OptimizationArea,
   OptimizationStatus,
@@ -128,6 +130,34 @@ export interface GenerateEmailStrategyOutput {
 export interface GetLatestEmailStrategyOutput {
   data: {
     strategy: EmailStrategy | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateFlowPlanInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestFlowPlanInput {
+  clientId: string;
+}
+
+export interface GenerateFlowPlanOutput {
+  data: {
+    flowPlan: FlowPlan;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestFlowPlanOutput {
+  data: {
+    flowPlan: FlowPlan | null;
   };
   meta: {
     requestId: string;
@@ -521,6 +551,97 @@ export class AnalysisService {
     };
   }
 
+  async generateFlowPlan(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GenerateFlowPlanInput,
+  ): Promise<GenerateFlowPlanOutput> {
+    const requestId = input.requestId ?? `flow-plan-generate-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const strategyRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
+    const latestStrategy = this.parseLatestEmailStrategy(strategyRecords);
+    const existingFlowPlans = await this.repository.listLatestFlowPlanAudit(input.clientId, 20);
+    const latestFlowPlan = this.parseLatestFlowPlan(existingFlowPlans);
+    const nextVersion = (latestFlowPlan?.version ?? 0) + 1;
+
+    if (!latestStrategy || latestStrategy.status !== "ok") {
+      const preconditionResult = this.buildFlowPlanRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "precondition_not_approved",
+        requestId,
+        strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
+        items: [],
+        requiredStep: "generate_and_approve_strategy",
+      });
+
+      return {
+        data: { flowPlan: preconditionResult },
+        meta: { generatedAt: preconditionResult.generatedAt, requestId },
+      };
+    }
+
+    const items = this.buildFlowPlanItemsFromStrategy(latestStrategy);
+    const flowPlan = this.buildFlowPlanRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      requestId,
+      strategyRequestId: latestStrategy.requestId,
+      items,
+    });
+
+    try {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "strategy.flow_plan.generated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: flowPlan,
+      });
+    } catch {
+      return {
+        data: {
+          flowPlan: this.buildFlowPlanRecord({
+            clientId: input.clientId,
+            version: nextVersion,
+            status: "failed_persist",
+            requestId,
+            strategyRequestId: latestStrategy.requestId,
+            items: [],
+            requiredStep: "retry_generate_flow_plan",
+          }),
+        },
+        meta: {
+          generatedAt: new Date(),
+          requestId,
+        },
+      };
+    }
+
+    return {
+      data: { flowPlan },
+      meta: { generatedAt: flowPlan.generatedAt, requestId },
+    };
+  }
+
+  async getLatestFlowPlan(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetLatestFlowPlanInput,
+  ): Promise<GetLatestFlowPlanOutput> {
+    const requestId = `flow-plan-latest-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestFlowPlanAudit(input.clientId, 20);
+    const flowPlan = this.parseLatestFlowPlan(records) ?? null;
+    return {
+      data: { flowPlan },
+      meta: { requestId },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -909,6 +1030,109 @@ export class AnalysisService {
   ): EmailStrategy | null {
     for (const record of records) {
       const parsed = this.parseEmailStrategy(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildFlowPlanItemsFromStrategy(strategy: EmailStrategy): FlowPlanItem[] {
+    const priorities = strategy.priorities.length > 0 ? strategy.priorities : ["Core lifecycle automation"];
+    const objective = strategy.goals[0] ?? "Wzrost konwersji";
+    const segment = strategy.segments[0] ?? "Primary segment";
+
+    return priorities.slice(0, 3).map((priority, index) => ({
+      name: `Flow ${index + 1}: ${priority}`,
+      trigger: index === 0 ? "signup" : index === 1 ? "first_purchase" : "win_back_30d",
+      objective,
+      priority: index === 0 ? "CRITICAL" : index === 1 ? "HIGH" : "MEDIUM",
+      businessReason: `Priorytet strategiczny "${priority}" dla segmentu ${segment}.`,
+    }));
+  }
+
+  private buildFlowPlanRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "precondition_not_approved" | "failed_persist";
+    items: FlowPlanItem[];
+    requestId: string;
+    strategyRequestId: string;
+    requiredStep?: string;
+  }): FlowPlan {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      items: payload.items,
+      requestId: payload.requestId,
+      strategyRequestId: payload.strategyRequestId,
+      generatedAt: new Date(),
+      requiredStep: payload.requiredStep,
+    };
+  }
+
+  private parseFlowPlan(details: unknown): FlowPlan | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<FlowPlan>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      !Array.isArray(value.items) ||
+      typeof value.requestId !== "string" ||
+      typeof value.strategyRequestId !== "string"
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "precondition_not_approved", "failed_persist"] as const;
+    const isFlowPlanStatus = (item: unknown): item is FlowPlan["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isFlowPlanStatus(value.status)) {
+      return null;
+    }
+
+    const items = value.items
+      .filter(
+        (item): item is FlowPlanItem =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).name === "string" &&
+          typeof (item as Record<string, unknown>).trigger === "string" &&
+          typeof (item as Record<string, unknown>).objective === "string" &&
+          typeof (item as Record<string, unknown>).priority === "string" &&
+          typeof (item as Record<string, unknown>).businessReason === "string",
+      )
+      .map((item) => ({
+        name: item.name,
+        trigger: item.trigger,
+        objective: item.objective,
+        priority: item.priority,
+        businessReason: item.businessReason,
+      }));
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      items,
+      requestId: value.requestId,
+      strategyRequestId: value.strategyRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      requiredStep: typeof value.requiredStep === "string" ? value.requiredStep : undefined,
+    };
+  }
+
+  private parseLatestFlowPlan(records: Array<{ details: unknown }>): FlowPlan | null {
+    for (const record of records) {
+      const parsed = this.parseFlowPlan(record.details);
       if (parsed) {
         return parsed;
       }

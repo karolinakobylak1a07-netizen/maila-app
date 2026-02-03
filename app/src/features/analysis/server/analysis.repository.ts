@@ -43,6 +43,20 @@ export type StrategicPriorityRecord = {
   createdAt: Date;
 };
 
+export type DiscoveryAnswersRecord = {
+  goals: string[];
+  segments: string[];
+  brandTone: string | null;
+  primaryKpis: string[];
+};
+
+export type StrategyAuditRecord = {
+  id: string;
+  requestId: string;
+  createdAt: Date;
+  details: Prisma.JsonValue | null;
+};
+
 export class AnalysisRepository {
   private readonly database: Database;
 
@@ -211,6 +225,80 @@ export class AnalysisRepository {
         id: true,
         content: true,
         createdAt: true,
+      },
+    });
+  }
+
+  async findDiscoveryAnswers(clientId: string): Promise<DiscoveryAnswersRecord | null> {
+    const record = await this.database.discoveryOnboarding.findUnique({
+      where: { clientId },
+      include: {
+        answers: {
+          where: {
+            questionKey: {
+              in: ["goals", "segments", "brandTone", "primaryKpis"],
+            },
+          },
+          select: {
+            questionKey: true,
+            answerText: true,
+          },
+        },
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    const resolve = (key: string) =>
+      record.answers.find((answer) => answer.questionKey === key)?.answerText ?? "";
+    const toList = (raw: string) =>
+      raw
+        .split(/\r?\n|[,;]+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+    return {
+      goals: toList(resolve("goals")),
+      segments: toList(resolve("segments")),
+      brandTone: resolve("brandTone").trim() || null,
+      primaryKpis: toList(resolve("primaryKpis")),
+    };
+  }
+
+  listLatestEmailStrategyAudit(clientId: string, limit = 10): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: "strategy.email.generated",
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
+      },
+    });
+  }
+
+  listLatestFlowPlanAudit(clientId: string, limit = 10): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: "strategy.flow_plan.generated",
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
       },
     });
   }

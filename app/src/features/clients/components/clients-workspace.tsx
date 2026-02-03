@@ -29,6 +29,7 @@ import { SyncStatusCard } from "~/features/analysis/components/sync-status";
 import { GapListCard } from "~/features/analysis/components/gap-list";
 import { OptimizationPrioritiesList } from "~/features/analysis/components/optimization-priorities-list";
 import { ContextInsightsList } from "~/features/analysis/components/context-insights-list";
+import { FlowPlanCard } from "~/features/analysis/components/flow-plan-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -83,6 +84,8 @@ export function ClientsWorkspace() {
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [contextInsightsError, setContextInsightsError] = useState<string | null>(null);
   const [contextInsightsLoading, setContextInsightsLoading] = useState(false);
+  const [flowPlanError, setFlowPlanError] = useState<string | null>(null);
+  const [flowPlanLoading, setFlowPlanLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -159,6 +162,16 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const latestFlowPlanQuery = api.analysis.getLatestFlowPlan.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateFlowPlanMutation = api.analysis.generateFlowPlan.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -223,6 +236,7 @@ export function ClientsWorkspace() {
       utils.analysis.getGapReport.invalidate(),
       utils.analysis.getOptimizationAreas.invalidate(),
       utils.analysis.getContextInsights.invalidate(),
+      utils.analysis.getLatestFlowPlan.invalidate(),
     ]);
   };
 
@@ -582,6 +596,40 @@ export function ClientsWorkspace() {
     setContextInsightsError(null);
   }, [contextInsightsQuery.isLoading, contextInsightsQuery.isError, contextInsightsQuery.error]);
 
+  useEffect(() => {
+    if (latestFlowPlanQuery.isLoading) {
+      setFlowPlanLoading(true);
+      setFlowPlanError(null);
+      return;
+    }
+
+    if (latestFlowPlanQuery.isError) {
+      setFlowPlanLoading(false);
+      const requestId = extractRequestId(latestFlowPlanQuery.error);
+      setFlowPlanError(withRequestId("Nie udalo sie pobrac planu flow.", requestId));
+      return;
+    }
+
+    setFlowPlanLoading(false);
+    setFlowPlanError(null);
+  }, [latestFlowPlanQuery.isLoading, latestFlowPlanQuery.isError, latestFlowPlanQuery.error]);
+
+  const generateFlowPlan = async () => {
+    if (!activeClientId) {
+      setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateFlowPlanMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setFlowPlanError(
+        withRequestId("Nie udalo sie wygenerowac planu flow.", extractRequestId(error)),
+      );
+    }
+  };
+
   const discoveryProgress = useMemo(() => {
     const fromLocal = evaluateDiscoveryCompleteness(discoveryAnswers);
     const fromServer = discoveryStateQuery.data?.data;
@@ -674,6 +722,19 @@ export function ClientsWorkspace() {
               null
             }
             insights={contextInsightsQuery.data?.data.insights ?? []}
+          />
+        </div>
+        <div className="mt-4">
+          <FlowPlanCard
+            loading={flowPlanLoading}
+            generating={generateFlowPlanMutation.isPending}
+            error={flowPlanError}
+            requestId={
+              latestFlowPlanQuery.data?.meta.requestId ??
+              extractRequestId(latestFlowPlanQuery.error)
+            }
+            flowPlan={latestFlowPlanQuery.data?.data.flowPlan ?? null}
+            onGenerate={generateFlowPlan}
           />
         </div>
         </div>

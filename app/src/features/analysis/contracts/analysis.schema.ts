@@ -96,9 +96,76 @@ export const getContextInsightsSchema = z.object({
   requestId: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(20).optional().default(5),
 });
+export const strategyGenerationStatusSchema = z.enum([
+  "ok",
+  "in_progress_or_timeout",
+  "blocked_preconditions",
+]);
+export const strategyPreconditionSchema = z.enum([
+  "discovery.goals",
+  "discovery.segments",
+  "audit.sync_ok",
+  "audit.optimization_available",
+]);
+export const emailStrategySchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: strategyGenerationStatusSchema,
+  goals: z.array(z.string().min(1)),
+  segments: z.array(z.string().min(1)),
+  tone: z.string().min(1),
+  priorities: z.array(z.string().min(1)),
+  kpis: z.array(z.string().min(1)),
+  requestId: z.string().min(1),
+  lastSyncRequestId: z.string().min(1),
+  generatedAt: z.date(),
+  missingPreconditions: z.array(strategyPreconditionSchema).default([]),
+  retryHint: z.string().min(1).optional(),
+});
+export const generateEmailStrategySchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestEmailStrategySchema = z.object({
+  clientId: z.string().cuid(),
+});
+export const flowPlanStatusSchema = z.enum([
+  "ok",
+  "precondition_not_approved",
+  "failed_persist",
+]);
+export const flowPrioritySchema = z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+export const flowPlanItemSchema = z.object({
+  name: z.string().min(1),
+  trigger: z.string().min(1),
+  objective: z.string().min(1),
+  priority: flowPrioritySchema,
+  businessReason: z.string().min(1),
+});
+export const flowPlanSchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: flowPlanStatusSchema,
+  items: z.array(flowPlanItemSchema),
+  requestId: z.string().min(1),
+  strategyRequestId: z.string().min(1),
+  generatedAt: z.date(),
+  requiredStep: z.string().min(1).optional(),
+});
+export const generateFlowPlanSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestFlowPlanSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
+export type GenerateEmailStrategySchema = z.infer<typeof generateEmailStrategySchema>;
+export type GetLatestEmailStrategySchema = z.infer<typeof getLatestEmailStrategySchema>;
+export type GenerateFlowPlanSchema = z.infer<typeof generateFlowPlanSchema>;
+export type GetLatestFlowPlanSchema = z.infer<typeof getLatestFlowPlanSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -157,3 +224,10 @@ export type OptimizationArea = z.infer<typeof optimizationAreaSchema>;
 export type InsightDataSource = z.infer<typeof insightDataSourceSchema>;
 export type InsightConflictDetails = z.infer<typeof insightConflictDetailsSchema>;
 export type InsightItem = z.infer<typeof insightItemSchema>;
+export type StrategyGenerationStatus = z.infer<typeof strategyGenerationStatusSchema>;
+export type StrategyPrecondition = z.infer<typeof strategyPreconditionSchema>;
+export type EmailStrategy = z.infer<typeof emailStrategySchema>;
+export type FlowPlanStatus = z.infer<typeof flowPlanStatusSchema>;
+export type FlowPriority = z.infer<typeof flowPrioritySchema>;
+export type FlowPlanItem = z.infer<typeof flowPlanItemSchema>;
+export type FlowPlan = z.infer<typeof flowPlanSchema>;
