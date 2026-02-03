@@ -456,6 +456,17 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.strategy.versionMeta.source).toBe("strategy.email.generated");
       expect(result.data.strategy.versionMeta.type).toBe("strategy");
       expect(mockRepository.createAuditLog).toHaveBeenCalled();
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.objectContaining({
+            timestamp: expect.any(String),
+            userId: "u1",
+            actionType: "strategy.email.generated",
+            artifactId: "req-strategy-ok",
+            diff: expect.any(Object),
+          }),
+        }),
+      );
     });
 
     it("returns blocked_preconditions for multi-condition precondition failure", async () => {
@@ -750,6 +761,13 @@ describe("AnalysisService.getOptimizationAreas", () => {
         expect.objectContaining({
           eventName: "strategy.flow_plan.generated",
           requestId: "flow-req-1",
+          details: expect.objectContaining({
+            timestamp: expect.any(String),
+            userId: "u1",
+            actionType: "strategy.flow_plan.generated",
+            artifactId: "flow-req-1",
+            diff: expect.any(Object),
+          }),
         }),
       );
     });
@@ -1344,6 +1362,92 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.draft.status).toBe("timed_out");
       expect(result.data.draft.retryable).toBe(true);
       expect(result.data.draft.briefRequestId).toBe("brief-2");
+    });
+
+    it("writes manual acceptance audit entry when manualAccept=true", async () => {
+      const now = new Date("2026-02-08T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([
+        {
+          id: "b-manual-1",
+          requestId: "brief-manual-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            campaignGoal: "Aktywacja",
+            segment: "VIP",
+            tone: "konkretny",
+            priority: "Welcome",
+            kpi: "conversion_rate",
+            requestId: "brief-manual-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "content.communication_brief.generated",
+              type: "plan",
+            },
+            missingFields: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s-manual-1",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Aktywacja"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.email.generated",
+              type: "strategy",
+            },
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestEmailDraftAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateEmailDraft("u1", "CONTENT", {
+        clientId: "client-1",
+        requestId: "draft-manual-1",
+        manualAccept: true,
+      });
+
+      expect(result.data.draft.status).toBe("ok");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledTimes(2);
+      expect(mockRepository.createAuditLog).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          eventName: "content.email_draft.manual_accept",
+          details: expect.objectContaining({
+            timestamp: expect.any(String),
+            userId: "u1",
+            actionType: "content.email_draft.manual_accept",
+            artifactId: "draft-manual-1",
+            diff: expect.any(Object),
+          }),
+        }),
+      );
     });
 
     it("returns failed_generation with requestId when finalization fails (AC3)", async () => {
@@ -2555,6 +2659,125 @@ describe("AnalysisService.getOptimizationAreas", () => {
 
       expect(result.data.recommendations.status).toBe("missing_context");
       expect(result.data.recommendations.items).toHaveLength(0);
+    });
+
+    it("writes manual acceptance audit entry for recommendations", async () => {
+      const now = new Date("2026-02-17T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet pro"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-reco-2",
+          requestId: "flow-reco-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Flow pakiet pro welcome",
+                trigger: "signup",
+                objective: "activate",
+                priority: "HIGH",
+                businessReason: "coverage",
+              },
+            ],
+            requestId: "flow-reco-2",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.flow_plan.generated",
+              type: "flow",
+            },
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-reco-2",
+          requestId: "camp-reco-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "PROMO",
+                goal: "promocja pakiet pro",
+                segment: "VIP",
+                title: "Kampania pakiet pro",
+              },
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter ogolny",
+                segment: "VIP",
+                title: "Newsletter ogolny",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "retencja",
+                segment: "VIP",
+                title: "Lifecycle retention",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "edukacja",
+                segment: "VIP",
+                title: "Edu camp",
+              },
+            ],
+            requestId: "camp-reco-2",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.campaign_calendar.generated",
+              type: "plan",
+            },
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.getCommunicationImprovementRecommendations("u1", "OWNER", {
+        clientId: "client-1",
+        manualAccept: true,
+      });
+
+      expect(result.data.recommendations.status).toBe("ok");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledTimes(1);
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "strategy.recommendation.manual_accept",
+          details: expect.objectContaining({
+            timestamp: expect.any(String),
+            userId: "u1",
+            actionType: "strategy.recommendation.manual_accept",
+            artifactId: expect.stringContaining("communication-improvement-recommendations-"),
+            diff: expect.any(Object),
+          }),
+        }),
+      );
     });
   });
 });

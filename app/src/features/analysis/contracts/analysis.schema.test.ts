@@ -548,6 +548,7 @@ describe('OptimizationArea Schema', () => {
 
     it('should validate generateEmailDraft input', () => {
       expect(generateEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000', manualAccept: true }).success).toBe(true);
       expect(generateEmailDraftSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
 
@@ -580,6 +581,7 @@ describe('OptimizationArea Schema', () => {
 
     it('should validate generatePersonalizedEmailDraft input', () => {
       expect(generatePersonalizedEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generatePersonalizedEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000', manualAccept: true }).success).toBe(true);
       expect(generatePersonalizedEmailDraftSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
 
@@ -788,6 +790,7 @@ describe('OptimizationArea Schema', () => {
 
     it('should validate getCommunicationImprovementRecommendations input', () => {
       expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'cm0000000000000000000000', manualAccept: true }).success).toBe(true);
       expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });

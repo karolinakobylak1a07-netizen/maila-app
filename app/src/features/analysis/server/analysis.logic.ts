@@ -288,6 +288,7 @@ export interface GetLatestCommunicationBriefOutput {
 export interface GenerateEmailDraftInput {
   clientId: string;
   requestId?: string;
+  manualAccept?: boolean;
 }
 
 export interface GetLatestEmailDraftInput {
@@ -316,6 +317,7 @@ export interface GetLatestEmailDraftOutput {
 export interface GeneratePersonalizedEmailDraftInput {
   clientId: string;
   requestId?: string;
+  manualAccept?: boolean;
 }
 
 export interface GetLatestPersonalizedEmailDraftInput {
@@ -441,6 +443,7 @@ export interface GetProductCoverageAnalysisOutput {
 
 export interface GetCommunicationImprovementRecommendationsInput {
   clientId: string;
+  manualAccept?: boolean;
 }
 
 export interface GetCommunicationImprovementRecommendationsOutput {
@@ -738,14 +741,16 @@ export class AnalysisService {
           requestId,
           entityType: "CLIENT",
           entityId: input.clientId,
-          details: {
-            status: "blocked_preconditions",
-            clientId: input.clientId,
-            missingPreconditions: blocked.missingPreconditions,
-            requestId,
-            timestamp: blocked.generatedAt.toISOString(),
-            lockAcquiredAt: lockAcquiredAt.toISOString(),
-          },
+          details: this.enrichAuditDetails({
+            userId,
+            actionType: "strategy.email.generated",
+            artifactId: blocked.requestId,
+            previous: latest,
+            current: blocked,
+            extra: {
+              lockAcquiredAt: lockAcquiredAt.toISOString(),
+            },
+          }),
         });
 
         return {
@@ -799,7 +804,13 @@ export class AnalysisService {
           requestId,
           entityType: "CLIENT",
           entityId: input.clientId,
-          details: timedOut,
+          details: this.enrichAuditDetails({
+            userId,
+            actionType: "strategy.email.generated",
+            artifactId: timedOut.requestId,
+            previous: latest,
+            current: timedOut,
+          }),
         });
 
         return {
@@ -831,7 +842,13 @@ export class AnalysisService {
         requestId,
         entityType: "CLIENT",
         entityId: input.clientId,
-        details: strategy,
+        details: this.enrichAuditDetails({
+          userId,
+          actionType: "strategy.email.generated",
+          artifactId: strategy.requestId,
+          previous: latest,
+          current: strategy,
+        }),
       });
 
       return {
@@ -911,7 +928,13 @@ export class AnalysisService {
         requestId,
         entityType: "CLIENT",
         entityId: input.clientId,
-        details: flowPlan,
+        details: this.enrichAuditDetails({
+          userId,
+          actionType: "strategy.flow_plan.generated",
+          artifactId: flowPlan.requestId,
+          previous: latestFlowPlan,
+          current: flowPlan,
+        }),
       });
     } catch {
       return {
@@ -1002,7 +1025,13 @@ export class AnalysisService {
       requestId,
       entityType: "CLIENT",
       entityId: input.clientId,
-      details: calendar,
+      details: this.enrichAuditDetails({
+        userId,
+        actionType: "strategy.campaign_calendar.generated",
+        artifactId: calendar.requestId,
+        previous: latestCalendar,
+        current: calendar,
+      }),
     });
 
     return {
@@ -1105,7 +1134,13 @@ export class AnalysisService {
         requestId,
         entityType: "CLIENT",
         entityId: input.clientId,
-        details: segmentProposal,
+        details: this.enrichAuditDetails({
+          userId,
+          actionType: "strategy.segment_proposal.generated",
+          artifactId: segmentProposal.requestId,
+          previous: latestProposal,
+          current: segmentProposal,
+        }),
       });
     } catch {
       return {
@@ -1395,8 +1430,30 @@ export class AnalysisService {
           requestId,
           entityType: "CLIENT",
           entityId: input.clientId,
-          details: draft,
+          details: this.enrichAuditDetails({
+            userId,
+            actionType: "content.email_draft.generated",
+            artifactId: draft.requestId,
+            previous: latestDraft,
+            current: draft,
+          }),
         });
+        if (input.manualAccept === true && draft.status === "ok") {
+          await this.repository.createAuditLog({
+            actorId: userId,
+            eventName: "content.email_draft.manual_accept",
+            requestId,
+            entityType: "CLIENT",
+            entityId: input.clientId,
+            details: this.enrichAuditDetails({
+              userId,
+              actionType: "content.email_draft.manual_accept",
+              artifactId: draft.requestId,
+              previous: { manualAccept: false },
+              current: { manualAccept: true, requestId: draft.requestId },
+            }),
+          });
+        }
       } catch {
         const failedDraft = this.buildEmailDraftRecord({
           clientId: input.clientId,
@@ -1514,8 +1571,30 @@ export class AnalysisService {
           requestId,
           entityType: "CLIENT",
           entityId: input.clientId,
-          details: personalizedDraft,
+          details: this.enrichAuditDetails({
+            userId,
+            actionType: "content.email_draft.personalized",
+            artifactId: personalizedDraft.requestId,
+            previous: latestPersonalizedDraft,
+            current: personalizedDraft,
+          }),
         });
+        if (input.manualAccept === true && personalizedDraft.status === "ok") {
+          await this.repository.createAuditLog({
+            actorId: userId,
+            eventName: "content.email_draft.personalized.manual_accept",
+            requestId,
+            entityType: "CLIENT",
+            entityId: input.clientId,
+            details: this.enrichAuditDetails({
+              userId,
+              actionType: "content.email_draft.personalized.manual_accept",
+              artifactId: personalizedDraft.requestId,
+              previous: { manualAccept: false },
+              current: { manualAccept: true, requestId: personalizedDraft.requestId },
+            }),
+          });
+        }
       } catch {
         const failedDraft = this.buildPersonalizedEmailDraftRecord({
           clientId: input.clientId,
@@ -2109,6 +2188,30 @@ export class AnalysisService {
         }
         return right.impactScore - left.impactScore;
       });
+
+    if (input.manualAccept === true) {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "strategy.recommendation.manual_accept",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: this.enrichAuditDetails({
+          userId,
+          actionType: "strategy.recommendation.manual_accept",
+          artifactId: requestId,
+          previous: { manualAccept: false },
+          current: {
+            manualAccept: true,
+            recommendationCount: items.length,
+            requestId,
+          },
+          extra: {
+            recommendationIds: items.map((item) => item.id),
+          },
+        }),
+      });
+    }
 
     return {
       data: {
@@ -3504,6 +3607,59 @@ export class AnalysisService {
       source: typeof value.source === "string" ? value.source : "legacy_record",
       type,
     });
+  }
+
+  private enrichAuditDetails(payload: {
+    userId: string;
+    actionType: string;
+    artifactId: string;
+    previous: unknown;
+    current: unknown;
+    extra?: Record<string, unknown>;
+  }): Record<string, unknown> {
+    const currentObject =
+      payload.current && typeof payload.current === "object"
+        ? (payload.current as Record<string, unknown>)
+        : {};
+
+    return {
+      ...currentObject,
+      timestamp: new Date().toISOString(),
+      userId: payload.userId,
+      actionType: payload.actionType,
+      artifactId: payload.artifactId,
+      diff: this.buildAuditDiff(payload.previous, payload.current),
+      ...(payload.extra ?? {}),
+    };
+  }
+
+  private buildAuditDiff(previous: unknown, current: unknown): Record<string, unknown> {
+    const prevObject =
+      previous && typeof previous === "object"
+        ? (previous as Record<string, unknown>)
+        : {};
+    const currentObject =
+      current && typeof current === "object"
+        ? (current as Record<string, unknown>)
+        : {};
+    const keys = Array.from(
+      new Set([...Object.keys(prevObject), ...Object.keys(currentObject)]),
+    );
+    const changedKeys = keys.filter(
+      (key) => JSON.stringify(prevObject[key]) !== JSON.stringify(currentObject[key]),
+    );
+
+    return {
+      fromVersion:
+        typeof prevObject.version === "number" ? prevObject.version : null,
+      toVersion:
+        typeof currentObject.version === "number" ? currentObject.version : null,
+      changedKeys,
+      previousStatus:
+        typeof prevObject.status === "string" ? prevObject.status : null,
+      currentStatus:
+        typeof currentObject.status === "string" ? currentObject.status : null,
+    };
   }
 
   private buildImplementationChecklistSteps(

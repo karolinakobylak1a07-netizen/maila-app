@@ -285,6 +285,7 @@ export const emailDraftSchema = z.object({
 export const generateEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
   requestId: z.string().min(1).optional(),
+  manualAccept: z.boolean().optional().default(false),
 });
 export const getLatestEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
@@ -315,6 +316,7 @@ export const personalizedEmailDraftSchema = z.object({
 export const generatePersonalizedEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
   requestId: z.string().min(1).optional(),
+  manualAccept: z.boolean().optional().default(false),
 });
 export const getLatestPersonalizedEmailDraftSchema = z.object({
   clientId: z.string().cuid(),
@@ -492,6 +494,7 @@ export const communicationImprovementRecommendationsSchema = z.object({
 });
 export const getCommunicationImprovementRecommendationsSchema = z.object({
   clientId: z.string().cuid(),
+  manualAccept: z.boolean().optional().default(false),
 });
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
