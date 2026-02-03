@@ -97,7 +97,7 @@ FR14: Epic 3 - Planowanie kalendarza kampanii.
 FR15: Epic 3 - Propozycja segmentacji odbiorcow.
 FR16: Epic 4 - Generowanie draftow maili.
 FR17: Epic 4 - Generowanie briefow komunikacyjnych.
-FR18: Epic 4 - Zatwierdzanie i odrzucanie tresci przed wdrozeniem.
+FR18: Epic 4 - Personalizacja draftow na bazie segmentow.
 FR19: Epic 5 - Wdrozenie prowadzone checklista krokow.
 FR20: Epic 5 - Widocznosc zaleznosci flow/segmenty/kampanie.
 FR21: Epic 5 - Wykrywanie konfliktow wdrozeniowych.
@@ -158,8 +158,8 @@ Uzytkowniczka moze zsynchronizowac i przeanalizowac dane Klaviyo, wykryc luki i 
 Uzytkowniczka moze wygenerowac strategie email marketingu, plan flow, kalendarz kampanii i segmentacje.
 **FRs covered:** FR12, FR13, FR14, FR15
 
-### Epic 4: Content Briefing, Drafting & Human Approval
-Uzytkowniczka moze tworzyc briefy i drafty tresci oraz zatwierdzac je przed wdrozeniem.
+### Epic 4: Content Briefing, Drafting & Personalization
+Uzytkowniczka moze tworzyc briefy i drafty tresci oraz personalizowac komunikacje na bazie segmentow.
 **FRs covered:** FR16, FR17, FR18
 
 ### Epic 5: Implementation Orchestration
@@ -500,21 +500,21 @@ So that komunikacja jest trafna i dopasowana do etapu klienta.
 **Then** kazdy segment zawiera kryteria wejscia i cel segmentu
 **And** segmenty mozna wykorzystac bezposrednio w planie kampanii i flow.
 
-## Epic 4: Content Briefing, Drafting & Human Approval
+## Epic 4: Content Briefing, Drafting & Personalization
 
-Content i Owner moga szybko przejsc od strategii do gotowych tresci, zachowujac kontrole jakosci przez human review.
+Content i Owner moga szybko przejsc od strategii do gotowych tresci i wariantow segmentowych, zachowujac spojny kontekst biznesowy.
 
 **Additional Acceptance Criteria (Error & Edge Cases):**
 
-**Given** dane segmentacyjne sa niekompletne lub przestarzale
-**When** system generuje propozycje segmentow
-**Then** oznacza segmenty jako "requires_data_refresh"
-**And** podaje minimalny zestaw danych potrzebnych do finalizacji.
+**Given** brak segmentow lub brak danych segmentacyjnych
+**When** system probuje personalizowac draft email
+**Then** zwraca status "segment_data_missing"
+**And** nie publikuje wariantow personalizacji.
 
-**Given** wystepuje blad zapisu segmentow
-**When** uzytkownik zatwierdza segmentacje
-**Then** system wycofuje transakcje i zwraca komunikat bledu
-**And** nie publikuje czesciowej listy segmentow.
+**Given** finalizacja personalizacji draftu nie powiedzie sie
+**When** system zapisuje wynik personalizacji
+**Then** zwraca status "failed_generation" z requestId
+**And** nie publikuje wariantow w statusie "ok".
 
 ### Story 4.1: Generowanie briefu komunikacyjnego
 
@@ -566,18 +566,18 @@ So that szybciej przygotowuje tresci gotowe do review.
 **Then** nie tworzy artefaktu draftu w stanie "gotowy"
 **And** oznacza zadanie jako "failed_generation" z requestId.
 
-### Story 4.3: Workflow zatwierdzania i odrzucania tresci
+### Story 4.3: Personalizacja draftow na bazie segmentow
 
-As a Owner,
-I want akceptowac lub odrzucac drafty z komentarzem,
-So that do wdrozenia trafiaja tylko tresci zgodne ze strategia i standardem marki.
+As a Content & Messaging Lead,
+I want personalizowac drafty email na bazie segmentow,
+So that tresc i komunikat sa dopasowane do konkretnej grupy odbiorcow.
 
 **Acceptance Criteria:**
 
-**Given** draft ma status "oczekuje na review"
-**When** Owner podejmuje decyzje
-**Then** status zmienia sie na "zatwierdzona" albo "odrzucona"
-**And** decyzja zawiera komentarz i zapis w historii zmian.
+**Given** istnieje draft email i segmenty klienta
+**When** uruchamiam personalizacje draftu
+**Then** system tworzy warianty per segment z dopasowanym tematem, preheaderem, body i CTA
+**And** wynik jest zapisywany jako artefakt klienta.
 
 ## Epic 5: Implementation Orchestration
 
@@ -873,4 +873,3 @@ So that utrzymuje spojnosc operacyjna poza aplikacja.
 **When** wysyla zadanie eksportu
 **Then** system odrzuca operacje kodem "forbidden"
 **And** nie generuje linku udostepnienia.
-
