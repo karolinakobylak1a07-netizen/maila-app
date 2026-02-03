@@ -1,6 +1,6 @@
 # Story 3.3: Kalendarz kampanii oparty o cele i sezonowosc
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -37,6 +37,29 @@ so that zespol realizuje komunikacje regularnie i zgodnie z sezonowoscia.
 
 - Reuse danych strategii/segmentow z Epic 3.
 - Minimal-diff, bez zmian w historiach 1.x-2.x.
+
+## How to verify manually
+
+1. Dla klienta z strategia `ok` i uzupelniona sezonowoscia wygeneruj kalendarz i potwierdz min. 4 tygodnie z polami: cel, segment, typ kampanii.
+2. Dla klienta bez sezonowosci wygeneruj kalendarz i potwierdz status `seasonality_missing` oraz `requiresManualValidation=true`.
+3. Dla roli bez `canEdit` w module AUDIT wywolaj `generateCampaignCalendar` i potwierdz `forbidden` bez zapisu nowej wersji.
+
+## Changed Files
+
+- `app/src/features/analysis/contracts/analysis.schema.ts`
+- `app/src/features/analysis/contracts/analysis.schema.test.ts`
+- `app/src/features/analysis/server/analysis.repository.ts`
+- `app/src/features/analysis/server/analysis.logic.ts`
+- `app/src/features/analysis/server/analysis.service.test.ts`
+- `app/src/features/analysis/analysis.router.ts`
+- `app/src/features/analysis/components/campaign-calendar-card.tsx`
+- `app/src/features/clients/components/clients-workspace.tsx`
+
+## Minimal Review
+
+- Ryzyko regresji: niskie, scope ograniczony do nowych endpointow `analysis.generate/getLatestCampaignCalendar`.
+- Brakujace testy: brak izolowanego testu komponentu `CampaignCalendarCard`; logika i kontrakty pokryte testami serwisu/schematu.
+- Green checks: `npm test`, `npm run typecheck`, `npm run lint` (lint z pre-existing warnings only).
 
 ## References
 
