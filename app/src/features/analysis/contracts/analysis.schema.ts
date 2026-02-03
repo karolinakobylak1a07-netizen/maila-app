@@ -107,6 +107,13 @@ export const strategyPreconditionSchema = z.enum([
   "audit.sync_ok",
   "audit.optimization_available",
 ]);
+export const versionedArtifactTypeSchema = z.enum(["plan", "flow", "strategy"]);
+export const artifactVersionMetaSchema = z.object({
+  timestamp: z.date(),
+  author: z.string().min(1),
+  source: z.string().min(1),
+  type: versionedArtifactTypeSchema,
+});
 export const emailStrategySchema = z.object({
   clientId: z.string().cuid(),
   version: z.number().int().positive(),
@@ -119,6 +126,7 @@ export const emailStrategySchema = z.object({
   requestId: z.string().min(1),
   lastSyncRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   missingPreconditions: z.array(strategyPreconditionSchema).default([]),
   retryHint: z.string().min(1).optional(),
 });
@@ -150,6 +158,7 @@ export const flowPlanSchema = z.object({
   requestId: z.string().min(1),
   strategyRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   requiredStep: z.string().min(1).optional(),
 });
 export const generateFlowPlanSchema = z.object({
@@ -184,6 +193,7 @@ export const campaignCalendarSchema = z.object({
   requestId: z.string().min(1),
   strategyRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   requiresManualValidation: z.boolean(),
 });
 export const generateCampaignCalendarSchema = z.object({
@@ -213,6 +223,7 @@ export const segmentProposalSchema = z.object({
   requestId: z.string().min(1),
   strategyRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   missingData: z.array(z.string().min(1)).default([]),
 });
 export const generateSegmentProposalSchema = z.object({
@@ -238,6 +249,7 @@ export const communicationBriefSchema = z.object({
   requestId: z.string().min(1),
   strategyRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   missingFields: z.array(z.string().min(1)).default([]),
 });
 export const generateCommunicationBriefSchema = z.object({
@@ -267,6 +279,7 @@ export const emailDraftSchema = z.object({
   requestId: z.string().min(1),
   briefRequestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   retryable: z.boolean().default(false),
 });
 export const generateEmailDraftSchema = z.object({
@@ -296,6 +309,7 @@ export const personalizedEmailDraftSchema = z.object({
   baseDraftRequestId: z.string().min(1),
   requestId: z.string().min(1),
   generatedAt: z.date(),
+  versionMeta: artifactVersionMetaSchema,
   variants: z.array(personalizedDraftVariantSchema),
 });
 export const generatePersonalizedEmailDraftSchema = z.object({
@@ -564,6 +578,8 @@ export type InsightConflictDetails = z.infer<typeof insightConflictDetailsSchema
 export type InsightItem = z.infer<typeof insightItemSchema>;
 export type StrategyGenerationStatus = z.infer<typeof strategyGenerationStatusSchema>;
 export type StrategyPrecondition = z.infer<typeof strategyPreconditionSchema>;
+export type VersionedArtifactType = z.infer<typeof versionedArtifactTypeSchema>;
+export type ArtifactVersionMeta = z.infer<typeof artifactVersionMetaSchema>;
 export type EmailStrategy = z.infer<typeof emailStrategySchema>;
 export type FlowPlanStatus = z.infer<typeof flowPlanStatusSchema>;
 export type FlowPriority = z.infer<typeof flowPrioritySchema>;

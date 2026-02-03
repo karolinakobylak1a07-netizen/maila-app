@@ -25,6 +25,8 @@ import type {
   ProductCoverageItem,
   CommunicationImprovementRecommendations,
   CommunicationImprovementRecommendationItem,
+  ArtifactVersionMeta,
+  VersionedArtifactType,
   SegmentProposal,
   SegmentProposalItem,
   PriorityLevel,
@@ -726,6 +728,7 @@ export class AnalysisService {
           kpis: discovery?.primaryKpis ?? [],
           requestId,
           lastSyncRequestId: syncRun?.requestId ?? "missing-sync",
+          author: userId,
           missingPreconditions: preconditions,
         });
 
@@ -786,6 +789,7 @@ export class AnalysisService {
           kpis: discovery!.primaryKpis,
           requestId,
           lastSyncRequestId: syncRun!.requestId,
+          author: userId,
           retryHint: `Retry generateEmailStrategy for the same client and sync snapshot. Lock acquired at ${lockAcquiredAt.toISOString()}.`,
         });
 
@@ -818,6 +822,7 @@ export class AnalysisService {
             : ["conversion_rate", "retention_rate"],
         requestId,
         lastSyncRequestId: syncRun!.requestId,
+        author: userId,
       });
 
       await this.repository.createAuditLog({
@@ -878,6 +883,7 @@ export class AnalysisService {
         requestId,
         strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
         items: [],
+        author: userId,
         requiredStep: "generate_and_approve_strategy",
       });
 
@@ -895,6 +901,7 @@ export class AnalysisService {
       requestId,
       strategyRequestId: latestStrategy.requestId,
       items,
+      author: userId,
     });
 
     try {
@@ -916,6 +923,7 @@ export class AnalysisService {
             requestId,
             strategyRequestId: latestStrategy.requestId,
             items: [],
+            author: userId,
             requiredStep: "retry_generate_flow_plan",
           }),
         },
@@ -984,6 +992,7 @@ export class AnalysisService {
       requestId,
       strategyRequestId: latestStrategy.requestId,
       requiresManualValidation: !hasSeasonality,
+      author: userId,
     });
 
     await this.validateEditAccess(userId, role, input.clientId);
@@ -1065,6 +1074,7 @@ export class AnalysisService {
         requestId,
         strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
         segments: [],
+        author: userId,
         missingData,
       });
       return {
@@ -1084,6 +1094,7 @@ export class AnalysisService {
       requestId,
       strategyRequestId: latestStrategy!.requestId,
       segments,
+      author: userId,
       missingData: [],
     });
 
@@ -1106,6 +1117,7 @@ export class AnalysisService {
             requestId,
             strategyRequestId: latestStrategy!.requestId,
             segments: [],
+            author: userId,
             missingData: [],
           }),
         },
@@ -1176,6 +1188,7 @@ export class AnalysisService {
         kpi: latestStrategy?.kpis[0] ?? "manual_kpi_required",
         requestId,
         strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
+        author: userId,
         missingFields,
       });
       return {
@@ -1195,6 +1208,7 @@ export class AnalysisService {
       kpi: latestStrategy!.kpis[0] ?? "conversion_rate",
       requestId,
       strategyRequestId: latestStrategy!.requestId,
+      author: userId,
       missingFields: [],
     });
 
@@ -1267,6 +1281,7 @@ export class AnalysisService {
           cta: "generation_failed",
           requestId,
           briefRequestId: latestBrief?.requestId ?? "missing-brief",
+          author: userId,
           retryable: false,
         });
         return {
@@ -1288,6 +1303,7 @@ export class AnalysisService {
           cta: "generation_failed",
           requestId,
           briefRequestId: latestBrief.requestId,
+          author: userId,
           retryable: false,
         });
         return {
@@ -1310,6 +1326,7 @@ export class AnalysisService {
           cta: "draft_timed_out",
           requestId,
           briefRequestId: latestBrief.requestId,
+          author: userId,
           retryable: true,
         });
         return {
@@ -1331,6 +1348,7 @@ export class AnalysisService {
           cta: "generation_failed",
           requestId,
           briefRequestId: latestBrief.requestId,
+          author: userId,
           retryable: false,
         });
         return {
@@ -1366,6 +1384,7 @@ export class AnalysisService {
         cta: aiPayload.cta,
         requestId,
         briefRequestId: latestBrief.requestId,
+        author: userId,
         retryable: false,
       });
 
@@ -1391,6 +1410,7 @@ export class AnalysisService {
           cta: "generation_failed",
           requestId,
           briefRequestId: latestBrief.requestId,
+          author: userId,
           retryable: false,
         });
         return {
@@ -1460,6 +1480,7 @@ export class AnalysisService {
           campaignGoal: latestDraft?.campaignGoal ?? "missing_campaign_goal",
           baseDraftRequestId: latestDraft?.requestId ?? "missing-draft",
           requestId,
+          author: userId,
           variants: [],
         });
         return {
@@ -1482,6 +1503,7 @@ export class AnalysisService {
         campaignGoal: latestDraft.campaignGoal,
         baseDraftRequestId: latestDraft.requestId,
         requestId,
+        author: userId,
         variants,
       });
 
@@ -1502,6 +1524,7 @@ export class AnalysisService {
           campaignGoal: latestDraft.campaignGoal,
           baseDraftRequestId: latestDraft.requestId,
           requestId,
+          author: userId,
           variants: [],
         });
         return {
@@ -2563,11 +2586,14 @@ export class AnalysisService {
     kpis: string[];
     requestId: string;
     lastSyncRequestId: string;
+    author?: string;
+    source?: string;
     missingPreconditions?: Array<
       "discovery.goals" | "discovery.segments" | "audit.sync_ok" | "audit.optimization_available"
     >;
     retryHint?: string;
   }): EmailStrategy {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -2579,7 +2605,13 @@ export class AnalysisService {
       kpis: payload.kpis,
       requestId: payload.requestId,
       lastSyncRequestId: payload.lastSyncRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "strategy.email.generated",
+        type: "strategy",
+      }),
       missingPreconditions: payload.missingPreconditions ?? [],
       retryHint: payload.retryHint,
     };
@@ -2639,6 +2671,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "strategy",
+        },
+      ),
       missingPreconditions: Array.isArray(value.missingPreconditions)
         ? value.missingPreconditions.filter(isAllowedPrecondition)
         : [],
@@ -2679,8 +2721,11 @@ export class AnalysisService {
     items: FlowPlanItem[];
     requestId: string;
     strategyRequestId: string;
+    author?: string;
+    source?: string;
     requiredStep?: string;
   }): FlowPlan {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -2688,7 +2733,13 @@ export class AnalysisService {
       items: payload.items,
       requestId: payload.requestId,
       strategyRequestId: payload.strategyRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "strategy.flow_plan.generated",
+        type: "flow",
+      }),
       requiredStep: payload.requiredStep,
     };
   }
@@ -2747,6 +2798,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "flow",
+        },
+      ),
       requiredStep: typeof value.requiredStep === "string" ? value.requiredStep : undefined,
     };
   }
@@ -2788,7 +2849,10 @@ export class AnalysisService {
     requestId: string;
     strategyRequestId: string;
     requiresManualValidation: boolean;
+    author?: string;
+    source?: string;
   }): CampaignCalendar {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -2796,7 +2860,13 @@ export class AnalysisService {
       items: payload.items,
       requestId: payload.requestId,
       strategyRequestId: payload.strategyRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "strategy.campaign_calendar.generated",
+        type: "plan",
+      }),
       requiresManualValidation: payload.requiresManualValidation,
     };
   }
@@ -2862,6 +2932,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "plan",
+        },
+      ),
       requiresManualValidation: value.requiresManualValidation,
     };
   }
@@ -2905,7 +2985,10 @@ export class AnalysisService {
     requestId: string;
     strategyRequestId: string;
     missingData: string[];
+    author?: string;
+    source?: string;
   }): SegmentProposal {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -2913,7 +2996,13 @@ export class AnalysisService {
       segments: payload.segments,
       requestId: payload.requestId,
       strategyRequestId: payload.strategyRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "strategy.segment_proposal.generated",
+        type: "plan",
+      }),
       missingData: payload.missingData,
     };
   }
@@ -2973,6 +3062,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "plan",
+        },
+      ),
       missingData: value.missingData.filter((item): item is string => typeof item === "string"),
     };
   }
@@ -2999,7 +3098,10 @@ export class AnalysisService {
     requestId: string;
     strategyRequestId: string;
     missingFields: string[];
+    author?: string;
+    source?: string;
   }): CommunicationBrief {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -3011,7 +3113,13 @@ export class AnalysisService {
       kpi: payload.kpi,
       requestId: payload.requestId,
       strategyRequestId: payload.strategyRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "content.communication_brief.generated",
+        type: "plan",
+      }),
       missingFields: payload.missingFields,
     };
   }
@@ -3060,6 +3168,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "plan",
+        },
+      ),
       missingFields: value.missingFields.filter((item): item is string => typeof item === "string"),
     };
   }
@@ -3087,6 +3205,8 @@ export class AnalysisService {
     requestId: string;
     briefRequestId: string;
     retryable: boolean;
+    author?: string;
+    source?: string;
   }): EmailDraft {
     const validated = {
       clientId: payload.clientId.trim(),
@@ -3122,6 +3242,7 @@ export class AnalysisService {
       );
     }
 
+    const generatedAt = new Date();
     return {
       clientId: validated.clientId,
       version: payload.version,
@@ -3134,7 +3255,13 @@ export class AnalysisService {
       cta: validated.cta,
       requestId: validated.requestId,
       briefRequestId: validated.briefRequestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "content.email_draft.generated",
+        type: "plan",
+      }),
       retryable: payload.retryable,
     };
   }
@@ -3185,6 +3312,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "plan",
+        },
+      ),
       retryable: value.retryable,
     };
   }
@@ -3220,7 +3357,10 @@ export class AnalysisService {
     baseDraftRequestId: string;
     requestId: string;
     variants: PersonalizedDraftVariant[];
+    author?: string;
+    source?: string;
   }): PersonalizedEmailDraft {
+    const generatedAt = new Date();
     return {
       clientId: payload.clientId,
       version: payload.version,
@@ -3228,7 +3368,13 @@ export class AnalysisService {
       campaignGoal: payload.campaignGoal,
       baseDraftRequestId: payload.baseDraftRequestId,
       requestId: payload.requestId,
-      generatedAt: new Date(),
+      generatedAt,
+      versionMeta: this.buildArtifactVersionMeta({
+        timestamp: generatedAt,
+        author: payload.author,
+        source: payload.source ?? "content.email_draft.personalized",
+        type: "plan",
+      }),
       variants: payload.variants,
     };
   }
@@ -3288,6 +3434,16 @@ export class AnalysisService {
         value.generatedAt instanceof Date
           ? value.generatedAt
           : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      versionMeta: this.parseArtifactVersionMeta(
+        value.versionMeta,
+        {
+          timestamp:
+            value.generatedAt instanceof Date
+              ? value.generatedAt
+              : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+          type: "plan",
+        },
+      ),
       variants,
     };
   }
@@ -3302,6 +3458,52 @@ export class AnalysisService {
       }
     }
     return null;
+  }
+
+  private buildArtifactVersionMeta(payload: {
+    timestamp: Date;
+    author?: string;
+    source?: string;
+    type: VersionedArtifactType;
+  }): ArtifactVersionMeta {
+    const author = payload.author?.trim().length ? payload.author.trim() : "system";
+    const source = payload.source?.trim().length ? payload.source.trim() : "analysis.service";
+    return {
+      timestamp: payload.timestamp,
+      author,
+      source,
+      type: payload.type,
+    };
+  }
+
+  private parseArtifactVersionMeta(
+    input: unknown,
+    fallback: { timestamp: Date; type: VersionedArtifactType },
+  ): ArtifactVersionMeta {
+    if (!input || typeof input !== "object") {
+      return this.buildArtifactVersionMeta({
+        timestamp: fallback.timestamp,
+        author: "legacy_record",
+        source: "legacy_record",
+        type: fallback.type,
+      });
+    }
+
+    const value = input as Partial<ArtifactVersionMeta>;
+    const timestamp =
+      value.timestamp instanceof Date
+        ? value.timestamp
+        : new Date((value.timestamp as string | undefined) ?? fallback.timestamp.toISOString());
+    const type = value.type === "plan" || value.type === "flow" || value.type === "strategy"
+      ? value.type
+      : fallback.type;
+
+    return this.buildArtifactVersionMeta({
+      timestamp,
+      author: typeof value.author === "string" ? value.author : "legacy_record",
+      source: typeof value.source === "string" ? value.source : "legacy_record",
+      type,
+    });
   }
 
   private buildImplementationChecklistSteps(

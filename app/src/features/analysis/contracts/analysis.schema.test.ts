@@ -11,6 +11,8 @@ import {
   getContextInsightsSchema,
   emailStrategySchema,
   strategyGenerationStatusSchema,
+  versionedArtifactTypeSchema,
+  artifactVersionMetaSchema,
   generateEmailStrategySchema,
   flowPlanSchema,
   flowPlanStatusSchema,
@@ -54,6 +56,13 @@ import {
   communicationImprovementRecommendationsSchema,
   getCommunicationImprovementRecommendationsSchema,
 } from './analysis.schema';
+
+const versionMeta = {
+  timestamp: new Date('2026-02-04T12:00:00.000Z'),
+  author: 'user-1',
+  source: 'test.source',
+  type: 'strategy' as const,
+};
 
 describe('OptimizationArea Schema', () => {
   describe('optimizationStatusSchema', () => {
@@ -364,6 +373,13 @@ describe('OptimizationArea Schema', () => {
       expect(strategyGenerationStatusSchema.safeParse('blocked_preconditions').success).toBe(true);
     });
 
+    it('should parse version metadata schema', () => {
+      expect(versionedArtifactTypeSchema.safeParse('strategy').success).toBe(true);
+      expect(versionedArtifactTypeSchema.safeParse('flow').success).toBe(true);
+      expect(versionedArtifactTypeSchema.safeParse('plan').success).toBe(true);
+      expect(artifactVersionMetaSchema.safeParse(versionMeta).success).toBe(true);
+    });
+
     it('should parse valid email strategy payload', () => {
       const result = emailStrategySchema.safeParse({
         clientId: 'cm0000000000000000000000',
@@ -377,6 +393,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-strategy',
         lastSyncRequestId: 'sync-1',
         generatedAt: new Date('2026-02-04T12:00:00.000Z'),
+        versionMeta,
         missingPreconditions: [],
       });
       expect(result.success).toBe(true);
@@ -408,6 +425,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-flow',
         strategyRequestId: 'req-strategy',
         generatedAt: new Date('2026-02-04T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'flow' },
       });
       expect(result.success).toBe(true);
     });
@@ -434,6 +452,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-calendar',
         strategyRequestId: 'req-strategy',
         generatedAt: new Date('2026-02-05T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'plan' },
         requiresManualValidation: false,
       });
       expect(result.success).toBe(true);
@@ -465,6 +484,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-segment',
         strategyRequestId: 'req-strategy',
         generatedAt: new Date('2026-02-06T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'plan' },
         missingData: [],
       });
       expect(result.success).toBe(true);
@@ -491,6 +511,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-brief',
         strategyRequestId: 'req-strategy',
         generatedAt: new Date('2026-02-07T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'plan' },
         missingFields: [],
       });
       expect(result.success).toBe(true);
@@ -519,6 +540,7 @@ describe('OptimizationArea Schema', () => {
         requestId: 'req-draft',
         briefRequestId: 'req-brief',
         generatedAt: new Date('2026-02-08T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'plan' },
         retryable: false,
       });
       expect(result.success).toBe(true);
@@ -542,6 +564,7 @@ describe('OptimizationArea Schema', () => {
         baseDraftRequestId: 'req-base',
         requestId: 'req-personalized',
         generatedAt: new Date('2026-02-09T12:00:00.000Z'),
+        versionMeta: { ...versionMeta, type: 'plan' },
         variants: [
           {
             segment: 'VIP',

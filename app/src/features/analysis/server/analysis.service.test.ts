@@ -452,6 +452,9 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.strategy.version).toBe(1);
       expect(result.data.strategy.goals).toContain("Wzrost konwersji");
       expect(result.data.strategy.segments).toContain("VIP");
+      expect(result.data.strategy.versionMeta.author).toBe("u1");
+      expect(result.data.strategy.versionMeta.source).toBe("strategy.email.generated");
+      expect(result.data.strategy.versionMeta.type).toBe("strategy");
       expect(mockRepository.createAuditLog).toHaveBeenCalled();
     });
 
@@ -740,6 +743,9 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.flowPlan.status).toBe("ok");
       expect(result.data.flowPlan.items.length).toBeGreaterThan(0);
       expect(result.data.flowPlan.items[0]?.trigger).toBeTruthy();
+      expect(result.data.flowPlan.versionMeta.author).toBe("u1");
+      expect(result.data.flowPlan.versionMeta.source).toBe("strategy.flow_plan.generated");
+      expect(result.data.flowPlan.versionMeta.type).toBe("flow");
       expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           eventName: "strategy.flow_plan.generated",
@@ -1275,6 +1281,9 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.draft.cta.length).toBeGreaterThan(0);
       expect(result.data.draft.segment).toBe("VIP");
       expect(result.data.draft.campaignGoal).toBe("Aktywacja nowych klientow");
+      expect(result.data.draft.versionMeta.author).toBe("u1");
+      expect(result.data.draft.versionMeta.source).toBe("content.email_draft.generated");
+      expect(result.data.draft.versionMeta.type).toBe("plan");
     });
 
     it("returns timed_out and keeps brief linkage for retry (AC2)", async () => {
