@@ -2,6 +2,7 @@ import { AnalysisRepository } from "./analysis.repository";
 import { db } from "~/server/db";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
+  AuditProductContext,
   CampaignCalendar,
   CampaignCalendarItem,
   CommunicationBrief,
@@ -400,6 +401,19 @@ export interface GetImplementationReportInput {
 export interface GetImplementationReportOutput {
   data: {
     report: ImplementationReport;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GetAuditProductContextInput {
+  clientId: string;
+}
+
+export interface GetAuditProductContextOutput {
+  data: {
+    context: AuditProductContext;
   };
   meta: {
     requestId: string;
@@ -1878,6 +1892,58 @@ export class AnalysisService {
           generatedAt,
           status: alerts.status,
           markdown,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
+  async getAuditProductContext(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetAuditProductContextInput,
+  ): Promise<GetAuditProductContextOutput> {
+    const requestId = `audit-product-context-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const contextRecord = await this.repository.findAuditProductContext(input.clientId);
+    const fallback = {
+      offer: "missing_offer",
+      targetAudience: "missing_target_audience",
+      mainProducts: [],
+      currentFlows: [],
+      goals: [],
+      segments: [],
+    };
+    const resolved = contextRecord ?? fallback;
+    const missingFields: string[] = [];
+    if (!resolved.offer || resolved.offer.trim().length === 0) {
+      missingFields.push("offer");
+    }
+    if (!resolved.targetAudience || resolved.targetAudience.trim().length === 0) {
+      missingFields.push("targetAudience");
+    }
+    if (resolved.mainProducts.length === 0) {
+      missingFields.push("mainProducts");
+    }
+    if (resolved.currentFlows.length === 0) {
+      missingFields.push("currentFlows");
+    }
+
+    return {
+      data: {
+        context: {
+          clientId: input.clientId,
+          status: missingFields.length === 0 ? "ok" : "missing_context",
+          requestId,
+          generatedAt: new Date(),
+          offer: resolved.offer?.trim() || "missing_offer",
+          targetAudience: resolved.targetAudience?.trim() || "missing_target_audience",
+          mainProducts: resolved.mainProducts,
+          currentFlows: resolved.currentFlows,
+          goals: resolved.goals,
+          segments: resolved.segments,
+          missingFields,
         },
       },
       meta: { requestId },

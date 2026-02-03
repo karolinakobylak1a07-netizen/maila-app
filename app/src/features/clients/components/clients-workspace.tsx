@@ -37,6 +37,7 @@ import { EmailDraftCard } from "~/features/analysis/components/email-draft-card"
 import { PersonalizedEmailDraftCard } from "~/features/analysis/components/personalized-email-draft-card";
 import { ImplementationChecklistCard } from "~/features/analysis/components/implementation-checklist-card";
 import { ImplementationAlertsCard } from "~/features/analysis/components/implementation-alerts-card";
+import { AuditProductContextCard } from "~/features/analysis/components/audit-product-context-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -111,6 +112,9 @@ export function ClientsWorkspace() {
   const [implementationAlertsLoading, setImplementationAlertsLoading] = useState(false);
   const [implementationReportLoading, setImplementationReportLoading] = useState(false);
   const [implementationReportMarkdown, setImplementationReportMarkdown] = useState<string | null>(null);
+  const [auditProductContextError, setAuditProductContextError] = useState<string | null>(null);
+  const [auditProductContextLoading, setAuditProductContextLoading] = useState(false);
+  const [auditProductContextRefreshing, setAuditProductContextRefreshing] = useState(false);
 
   const utils = api.useUtils();
 
@@ -274,6 +278,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const auditProductContextQuery = api.analysis.getAuditProductContext.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -349,6 +362,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestImplementationChecklist.invalidate(),
       utils.analysis.getImplementationAlerts.invalidate(),
       utils.analysis.getImplementationReport.invalidate(),
+      utils.analysis.getAuditProductContext.invalidate(),
     ]);
   };
 
@@ -888,6 +902,30 @@ export function ClientsWorkspace() {
     implementationAlertsQuery.error,
   ]);
 
+  useEffect(() => {
+    if (auditProductContextQuery.isLoading) {
+      setAuditProductContextLoading(true);
+      setAuditProductContextError(null);
+      return;
+    }
+
+    if (auditProductContextQuery.isError) {
+      setAuditProductContextLoading(false);
+      const requestId = extractRequestId(auditProductContextQuery.error);
+      setAuditProductContextError(
+        withRequestId("Nie udalo sie pobrac kontekstu produktu.", requestId),
+      );
+      return;
+    }
+
+    setAuditProductContextLoading(false);
+    setAuditProductContextError(null);
+  }, [
+    auditProductContextQuery.isLoading,
+    auditProductContextQuery.isError,
+    auditProductContextQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1053,6 +1091,25 @@ export function ClientsWorkspace() {
       );
     } finally {
       setImplementationReportLoading(false);
+    }
+  };
+
+  const refreshAuditProductContext = async () => {
+    if (!activeClientId) {
+      setAuditProductContextError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setAuditProductContextRefreshing(true);
+    try {
+      await auditProductContextQuery.refetch();
+      setAuditProductContextError(null);
+    } catch (error) {
+      setAuditProductContextError(
+        withRequestId("Nie udalo sie odswiezyc kontekstu produktu.", extractRequestId(error)),
+      );
+    } finally {
+      setAuditProductContextRefreshing(false);
     }
   };
 
@@ -1309,6 +1366,19 @@ export function ClientsWorkspace() {
             alerts={implementationAlertsQuery.data?.data.alerts ?? null}
             reportMarkdown={implementationReportMarkdown}
             onDownloadReport={downloadImplementationReport}
+          />
+        </div>
+        <div className="mt-4">
+          <AuditProductContextCard
+            loading={auditProductContextLoading}
+            refreshing={auditProductContextRefreshing}
+            error={auditProductContextError}
+            requestId={
+              auditProductContextQuery.data?.meta.requestId ??
+              extractRequestId(auditProductContextQuery.error)
+            }
+            context={auditProductContextQuery.data?.data.context ?? null}
+            onRefresh={refreshAuditProductContext}
           />
         </div>
         </div>

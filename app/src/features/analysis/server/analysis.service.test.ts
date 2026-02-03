@@ -23,6 +23,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       findDiscoveryContext: vi.fn(),
       listLatestStrategicPriorities: vi.fn(),
       findDiscoveryAnswers: vi.fn(),
+      findAuditProductContext: vi.fn(),
       listLatestEmailStrategyAudit: vi.fn(),
       listLatestFlowPlanAudit: vi.fn(),
       listLatestCampaignCalendarAudit: vi.fn(),
@@ -2192,6 +2193,60 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.report.markdown).toContain("## at_risk");
       expect(result.data.report.markdown).toContain("## blockers");
       expect(result.data.report.markdown).toContain("- [x] Skonfigurowac flow welcome");
+    });
+  });
+
+  describe("audit product context collection (Story 6.1)", () => {
+    it("returns ok status with full product context for audit", async () => {
+      const now = new Date("2026-02-15T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["Pakiet Pro"],
+        currentFlows: ["Welcome", "Abandon cart"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+
+      const result = await analysisService.getAuditProductContext("u1", "STRATEGY", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.context.status).toBe("ok");
+      expect(result.data.context.mainProducts).toContain("Pakiet Pro");
+      expect(result.data.context.missingFields).toHaveLength(0);
+      vi.useRealTimers();
+    });
+
+    it("returns missing_context when key product fields are absent", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: null,
+        targetAudience: "",
+        mainProducts: [],
+        currentFlows: [],
+        goals: [],
+        segments: [],
+      });
+
+      const result = await analysisService.getAuditProductContext("u1", "OWNER", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.context.status).toBe("missing_context");
+      expect(result.data.context.missingFields).toContain("offer");
+      expect(result.data.context.missingFields).toContain("targetAudience");
+      expect(result.data.context.missingFields).toContain("mainProducts");
+      expect(result.data.context.missingFields).toContain("currentFlows");
     });
   });
 });

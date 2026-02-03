@@ -42,6 +42,9 @@ import {
   implementationReportSchema,
   implementationReportStatusSchema,
   getImplementationReportSchema,
+  auditProductContextSchema,
+  auditProductContextStatusSchema,
+  getAuditProductContextSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -655,6 +658,31 @@ describe('OptimizationArea Schema', () => {
     it('should validate getImplementationReport input', () => {
       expect(getImplementationReportSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getImplementationReportSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse audit product context payload', () => {
+      expect(auditProductContextStatusSchema.safeParse('ok').success).toBe(true);
+      expect(auditProductContextStatusSchema.safeParse('missing_context').success).toBe(true);
+
+      const result = auditProductContextSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        status: 'ok',
+        requestId: 'req-audit-context',
+        generatedAt: new Date('2026-02-14T12:00:00.000Z'),
+        offer: 'Subskrypcja premium',
+        targetAudience: 'SMB ecommerce',
+        mainProducts: ['Pakiet Pro'],
+        currentFlows: ['Welcome'],
+        goals: ['Wzrost konwersji'],
+        segments: ['VIP'],
+        missingFields: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getAuditProductContext input', () => {
+      expect(getAuditProductContextSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getAuditProductContextSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

@@ -406,6 +406,26 @@ export const implementationReportSchema = z.object({
 export const getImplementationReportSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const auditProductContextStatusSchema = z.enum([
+  "ok",
+  "missing_context",
+]);
+export const auditProductContextSchema = z.object({
+  clientId: z.string().cuid(),
+  status: auditProductContextStatusSchema,
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  offer: z.string().min(1),
+  targetAudience: z.string().min(1),
+  mainProducts: z.array(z.string().min(1)),
+  currentFlows: z.array(z.string().min(1)),
+  goals: z.array(z.string().min(1)),
+  segments: z.array(z.string().min(1)),
+  missingFields: z.array(z.string().min(1)),
+});
+export const getAuditProductContextSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -428,6 +448,7 @@ export type GetLatestImplementationChecklistSchema = z.infer<typeof getLatestImp
 export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImplementationChecklistStepSchema>;
 export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
 export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
+export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -519,3 +540,5 @@ export type ImplementationAlertsStatus = z.infer<typeof implementationAlertsStat
 export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;
 export type ImplementationReportStatus = z.infer<typeof implementationReportStatusSchema>;
 export type ImplementationReport = z.infer<typeof implementationReportSchema>;
+export type AuditProductContextStatus = z.infer<typeof auditProductContextStatusSchema>;
+export type AuditProductContext = z.infer<typeof auditProductContextSchema>;

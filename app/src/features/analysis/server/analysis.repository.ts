@@ -51,6 +51,15 @@ export type DiscoveryAnswersRecord = {
   primaryKpis: string[];
 };
 
+export type AuditProductContextRecord = {
+  offer: string | null;
+  targetAudience: string | null;
+  mainProducts: string[];
+  currentFlows: string[];
+  goals: string[];
+  segments: string[];
+};
+
 export type StrategyAuditRecord = {
   id: string;
   requestId: string;
@@ -327,6 +336,53 @@ export class AnalysisRepository {
       seasonality: resolve("seasonality").trim() || null,
       brandTone: resolve("brandTone").trim() || null,
       primaryKpis: toList(resolve("primaryKpis")),
+    };
+  }
+
+  async findAuditProductContext(clientId: string): Promise<AuditProductContextRecord | null> {
+    const record = await this.database.discoveryOnboarding.findUnique({
+      where: { clientId },
+      include: {
+        answers: {
+          where: {
+            questionKey: {
+              in: [
+                "offer",
+                "targetAudience",
+                "mainProducts",
+                "currentFlows",
+                "goals",
+                "segments",
+              ],
+            },
+          },
+          select: {
+            questionKey: true,
+            answerText: true,
+          },
+        },
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    const resolve = (key: string) =>
+      record.answers.find((answer) => answer.questionKey === key)?.answerText ?? "";
+    const toList = (raw: string) =>
+      raw
+        .split(/\r?\n|[,;]+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+    return {
+      offer: resolve("offer").trim() || null,
+      targetAudience: resolve("targetAudience").trim() || null,
+      mainProducts: toList(resolve("mainProducts")),
+      currentFlows: toList(resolve("currentFlows")),
+      goals: toList(resolve("goals")),
+      segments: toList(resolve("segments")),
     };
   }
 
