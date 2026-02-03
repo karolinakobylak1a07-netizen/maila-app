@@ -2249,4 +2249,144 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.context.missingFields).toContain("currentFlows");
     });
   });
+
+  describe("product coverage analysis (Story 6.2)", () => {
+    it("returns ok coverage when products are covered in flows and campaigns", async () => {
+      const now = new Date("2026-02-16T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet pro"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-coverage-1",
+          requestId: "flow-coverage-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Flow pakiet pro welcome",
+                trigger: "signup",
+                objective: "activate",
+                priority: "HIGH",
+                businessReason: "coverage",
+              },
+            ],
+            requestId: "flow-coverage-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-coverage-1",
+          requestId: "camp-coverage-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "PROMO",
+                goal: "promocja pakiet pro",
+                segment: "VIP",
+                title: "Kampania pakiet pro",
+              },
+            ],
+            requestId: "camp-coverage-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+
+      const result = await analysisService.getProductCoverageAnalysis("u1", "STRATEGY", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.coverage.status).toBe("ok");
+      expect(result.data.coverage.items[0]?.coverageScore).toBe(100);
+      expect(result.data.coverage.items[0]?.status).toBe("covered");
+    });
+
+    it("returns partial coverage with missing flow/campaign lists", async () => {
+      const now = new Date("2026-02-16T12:10:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet lite", "pakiet max"],
+        currentFlows: [],
+        goals: [],
+        segments: [],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-coverage-2",
+          requestId: "flow-coverage-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [],
+            requestId: "flow-coverage-2",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-coverage-2",
+          requestId: "camp-coverage-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter pakiet lite",
+                segment: "VIP",
+                title: "Edukacja pakiet lite",
+              },
+            ],
+            requestId: "camp-coverage-2",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+
+      const result = await analysisService.getProductCoverageAnalysis("u1", "OWNER", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.coverage.status).toBe("partial");
+      expect(result.data.coverage.missingFlows).toContain("pakiet lite");
+      expect(result.data.coverage.missingCampaigns).toContain("pakiet max");
+    });
+  });
 });

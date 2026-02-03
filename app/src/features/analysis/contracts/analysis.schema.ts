@@ -426,6 +426,35 @@ export const auditProductContextSchema = z.object({
 export const getAuditProductContextSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const productCoverageItemStatusSchema = z.enum([
+  "covered",
+  "partial",
+  "missing",
+]);
+export const productCoverageAnalysisStatusSchema = z.enum([
+  "ok",
+  "partial",
+  "missing_context",
+]);
+export const productCoverageItemSchema = z.object({
+  productName: z.string().min(1),
+  flowMatches: z.array(z.string().min(1)),
+  campaignMatches: z.array(z.string().min(1)),
+  coverageScore: z.number().int().min(0).max(100),
+  status: productCoverageItemStatusSchema,
+});
+export const productCoverageAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  status: productCoverageAnalysisStatusSchema,
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  items: z.array(productCoverageItemSchema),
+  missingFlows: z.array(z.string().min(1)),
+  missingCampaigns: z.array(z.string().min(1)),
+});
+export const getProductCoverageAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -449,6 +478,7 @@ export type UpdateImplementationChecklistStepSchema = z.infer<typeof updateImple
 export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAlertsSchema>;
 export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
+export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -542,3 +572,7 @@ export type ImplementationReportStatus = z.infer<typeof implementationReportStat
 export type ImplementationReport = z.infer<typeof implementationReportSchema>;
 export type AuditProductContextStatus = z.infer<typeof auditProductContextStatusSchema>;
 export type AuditProductContext = z.infer<typeof auditProductContextSchema>;
+export type ProductCoverageItemStatus = z.infer<typeof productCoverageItemStatusSchema>;
+export type ProductCoverageAnalysisStatus = z.infer<typeof productCoverageAnalysisStatusSchema>;
+export type ProductCoverageItem = z.infer<typeof productCoverageItemSchema>;
+export type ProductCoverageAnalysis = z.infer<typeof productCoverageAnalysisSchema>;

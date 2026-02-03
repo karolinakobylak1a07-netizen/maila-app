@@ -21,6 +21,8 @@ import type {
   InsightItem,
   OptimizationArea,
   OptimizationStatus,
+  ProductCoverageAnalysis,
+  ProductCoverageItem,
   SegmentProposal,
   SegmentProposalItem,
   PriorityLevel,
@@ -414,6 +416,19 @@ export interface GetAuditProductContextInput {
 export interface GetAuditProductContextOutput {
   data: {
     context: AuditProductContext;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GetProductCoverageAnalysisInput {
+  clientId: string;
+}
+
+export interface GetProductCoverageAnalysisOutput {
+  data: {
+    coverage: ProductCoverageAnalysis;
   };
   meta: {
     requestId: string;
@@ -1950,6 +1965,67 @@ export class AnalysisService {
     };
   }
 
+  async getProductCoverageAnalysis(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetProductCoverageAnalysisInput,
+  ): Promise<GetProductCoverageAnalysisOutput> {
+    const requestId = `product-coverage-analysis-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const [contextRecord, flowPlanRecords, campaignRecords] = await Promise.all([
+      this.repository.findAuditProductContext(input.clientId),
+      this.repository.listLatestFlowPlanAudit(input.clientId, 20),
+      this.repository.listLatestCampaignCalendarAudit(input.clientId, 20),
+    ]);
+
+    const flowPlan = this.parseLatestFlowPlan(flowPlanRecords ?? []);
+    const campaignCalendar = this.parseLatestCampaignCalendar(campaignRecords ?? []);
+
+    if (!contextRecord || contextRecord.mainProducts.length === 0) {
+      return {
+        data: {
+          coverage: {
+            clientId: input.clientId,
+            status: "missing_context",
+            requestId,
+            generatedAt: new Date(),
+            items: [],
+            missingFlows: [],
+            missingCampaigns: [],
+          },
+        },
+        meta: { requestId },
+      };
+    }
+
+    const items = contextRecord.mainProducts.map((productName) =>
+      this.buildProductCoverageItem(productName, flowPlan, campaignCalendar),
+    );
+    const missingFlows = items
+      .filter((item) => item.flowMatches.length === 0)
+      .map((item) => item.productName);
+    const missingCampaigns = items
+      .filter((item) => item.campaignMatches.length === 0)
+      .map((item) => item.productName);
+    const status = items.every((item) => item.status === "covered") ? "ok" : "partial";
+
+    return {
+      data: {
+        coverage: {
+          clientId: input.clientId,
+          status,
+          requestId,
+          generatedAt: new Date(),
+          items: items.sort((left, right) => right.coverageScore - left.coverageScore),
+          missingFlows,
+          missingCampaigns,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -3346,6 +3422,43 @@ export class AnalysisService {
       return 2;
     }
     return 1;
+  }
+
+  private buildProductCoverageItem(
+    productName: string,
+    flowPlan: FlowPlan | null,
+    campaignCalendar: CampaignCalendar | null,
+  ): ProductCoverageItem {
+    const normalizedProduct = productName.toLowerCase();
+    const flowMatches =
+      flowPlan?.items
+        .filter((item) => this.matchesProduct(item.name, normalizedProduct))
+        .map((item) => item.name) ?? [];
+    const campaignMatches =
+      campaignCalendar?.items
+        .filter(
+          (item) =>
+            this.matchesProduct(item.title, normalizedProduct) ||
+            this.matchesProduct(item.goal, normalizedProduct),
+        )
+        .map((item) => item.title) ?? [];
+
+    const hasFlow = flowMatches.length > 0;
+    const hasCampaign = campaignMatches.length > 0;
+    const coverageScore = hasFlow && hasCampaign ? 100 : hasFlow || hasCampaign ? 60 : 0;
+    const status = coverageScore === 100 ? "covered" : coverageScore > 0 ? "partial" : "missing";
+
+    return {
+      productName,
+      flowMatches,
+      campaignMatches,
+      coverageScore,
+      status,
+    };
+  }
+
+  private matchesProduct(value: string, normalizedProduct: string): boolean {
+    return value.toLowerCase().includes(normalizedProduct);
   }
 
   private createContentRequestId(prefix: string): string {

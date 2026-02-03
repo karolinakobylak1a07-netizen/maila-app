@@ -26,6 +26,7 @@ import {
   getImplementationAlertsSchema,
   getImplementationReportSchema,
   getAuditProductContextSchema,
+  getProductCoverageAnalysisSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -57,6 +58,7 @@ type AnalysisServiceContract = Pick<
   | "getImplementationAlerts"
   | "getImplementationReport"
   | "getAuditProductContext"
+  | "getProductCoverageAnalysis"
 >;
 
 export const createAnalysisRouter = (
@@ -414,6 +416,20 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getAuditProductContext(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getProductCoverageAnalysis: protectedProcedure
+      .input(getProductCoverageAnalysisSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getProductCoverageAnalysis(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
             input,

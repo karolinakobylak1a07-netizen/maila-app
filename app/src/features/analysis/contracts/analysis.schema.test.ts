@@ -45,6 +45,10 @@ import {
   auditProductContextSchema,
   auditProductContextStatusSchema,
   getAuditProductContextSchema,
+  productCoverageItemStatusSchema,
+  productCoverageAnalysisStatusSchema,
+  productCoverageAnalysisSchema,
+  getProductCoverageAnalysisSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -683,6 +687,39 @@ describe('OptimizationArea Schema', () => {
     it('should validate getAuditProductContext input', () => {
       expect(getAuditProductContextSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getAuditProductContextSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse product coverage analysis payload', () => {
+      expect(productCoverageItemStatusSchema.safeParse('covered').success).toBe(true);
+      expect(productCoverageItemStatusSchema.safeParse('partial').success).toBe(true);
+      expect(productCoverageItemStatusSchema.safeParse('missing').success).toBe(true);
+      expect(productCoverageAnalysisStatusSchema.safeParse('ok').success).toBe(true);
+      expect(productCoverageAnalysisStatusSchema.safeParse('partial').success).toBe(true);
+      expect(productCoverageAnalysisStatusSchema.safeParse('missing_context').success).toBe(true);
+
+      const result = productCoverageAnalysisSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        status: 'partial',
+        requestId: 'req-coverage',
+        generatedAt: new Date('2026-02-15T12:00:00.000Z'),
+        items: [
+          {
+            productName: 'Pakiet Pro',
+            flowMatches: ['Flow 1'],
+            campaignMatches: [],
+            coverageScore: 60,
+            status: 'partial',
+          },
+        ],
+        missingFlows: ['Pakiet Lite'],
+        missingCampaigns: ['Pakiet Pro'],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getProductCoverageAnalysis input', () => {
+      expect(getProductCoverageAnalysisSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getProductCoverageAnalysisSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

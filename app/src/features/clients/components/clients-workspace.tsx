@@ -38,6 +38,7 @@ import { PersonalizedEmailDraftCard } from "~/features/analysis/components/perso
 import { ImplementationChecklistCard } from "~/features/analysis/components/implementation-checklist-card";
 import { ImplementationAlertsCard } from "~/features/analysis/components/implementation-alerts-card";
 import { AuditProductContextCard } from "~/features/analysis/components/audit-product-context-card";
+import { ProductCoverageAnalysisCard } from "~/features/analysis/components/product-coverage-analysis-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -115,6 +116,9 @@ export function ClientsWorkspace() {
   const [auditProductContextError, setAuditProductContextError] = useState<string | null>(null);
   const [auditProductContextLoading, setAuditProductContextLoading] = useState(false);
   const [auditProductContextRefreshing, setAuditProductContextRefreshing] = useState(false);
+  const [productCoverageError, setProductCoverageError] = useState<string | null>(null);
+  const [productCoverageLoading, setProductCoverageLoading] = useState(false);
+  const [productCoverageRefreshing, setProductCoverageRefreshing] = useState(false);
 
   const utils = api.useUtils();
 
@@ -287,6 +291,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const productCoverageQuery = api.analysis.getProductCoverageAnalysis.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -363,6 +376,7 @@ export function ClientsWorkspace() {
       utils.analysis.getImplementationAlerts.invalidate(),
       utils.analysis.getImplementationReport.invalidate(),
       utils.analysis.getAuditProductContext.invalidate(),
+      utils.analysis.getProductCoverageAnalysis.invalidate(),
     ]);
   };
 
@@ -926,6 +940,30 @@ export function ClientsWorkspace() {
     auditProductContextQuery.error,
   ]);
 
+  useEffect(() => {
+    if (productCoverageQuery.isLoading) {
+      setProductCoverageLoading(true);
+      setProductCoverageError(null);
+      return;
+    }
+
+    if (productCoverageQuery.isError) {
+      setProductCoverageLoading(false);
+      const requestId = extractRequestId(productCoverageQuery.error);
+      setProductCoverageError(
+        withRequestId("Nie udalo sie pobrac analizy pokrycia produktu.", requestId),
+      );
+      return;
+    }
+
+    setProductCoverageLoading(false);
+    setProductCoverageError(null);
+  }, [
+    productCoverageQuery.isLoading,
+    productCoverageQuery.isError,
+    productCoverageQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1110,6 +1148,25 @@ export function ClientsWorkspace() {
       );
     } finally {
       setAuditProductContextRefreshing(false);
+    }
+  };
+
+  const refreshProductCoverage = async () => {
+    if (!activeClientId) {
+      setProductCoverageError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setProductCoverageRefreshing(true);
+    try {
+      await productCoverageQuery.refetch();
+      setProductCoverageError(null);
+    } catch (error) {
+      setProductCoverageError(
+        withRequestId("Nie udalo sie odswiezyc analizy pokrycia.", extractRequestId(error)),
+      );
+    } finally {
+      setProductCoverageRefreshing(false);
     }
   };
 
@@ -1379,6 +1436,19 @@ export function ClientsWorkspace() {
             }
             context={auditProductContextQuery.data?.data.context ?? null}
             onRefresh={refreshAuditProductContext}
+          />
+        </div>
+        <div className="mt-4">
+          <ProductCoverageAnalysisCard
+            loading={productCoverageLoading}
+            refreshing={productCoverageRefreshing}
+            error={productCoverageError}
+            requestId={
+              productCoverageQuery.data?.meta.requestId ??
+              extractRequestId(productCoverageQuery.error)
+            }
+            coverage={productCoverageQuery.data?.data.coverage ?? null}
+            onRefresh={refreshProductCoverage}
           />
         </div>
         </div>
