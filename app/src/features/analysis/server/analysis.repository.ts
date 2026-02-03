@@ -359,6 +359,24 @@ export class AnalysisRepository {
     });
   }
 
+  listLatestEmailDraftAudit(clientId: string, limit = 10): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: "content.email_draft.generated",
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
+      },
+    });
+  }
+
   listClientIds() {
     return this.database.clientProfile.findMany({
       where: { status: "ACTIVE" },

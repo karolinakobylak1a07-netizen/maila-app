@@ -5,6 +5,7 @@ import type {
   CampaignCalendar,
   CampaignCalendarItem,
   CommunicationBrief,
+  EmailDraft,
   EmailStrategy,
   FlowPlan,
   FlowPlanItem,
@@ -249,6 +250,34 @@ export interface GenerateCommunicationBriefOutput {
 export interface GetLatestCommunicationBriefOutput {
   data: {
     brief: CommunicationBrief | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateEmailDraftInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestEmailDraftInput {
+  clientId: string;
+}
+
+export interface GenerateEmailDraftOutput {
+  data: {
+    draft: EmailDraft;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestEmailDraftOutput {
+  data: {
+    draft: EmailDraft | null;
   };
   meta: {
     requestId: string;
@@ -1009,6 +1038,134 @@ export class AnalysisService {
     const brief = this.parseLatestCommunicationBrief(records) ?? null;
     return {
       data: { brief },
+      meta: { requestId },
+    };
+  }
+
+  async generateEmailDraft(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GenerateEmailDraftInput,
+  ): Promise<GenerateEmailDraftOutput> {
+    const requestId = input.requestId ?? `email-draft-generate-${Date.now()}`;
+    await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
+
+    const [briefRecords, existingDrafts] = await Promise.all([
+      this.repository.listLatestCommunicationBriefAudit(input.clientId, 20),
+      this.repository.listLatestEmailDraftAudit(input.clientId, 20),
+    ]);
+    const latestBrief = this.parseLatestCommunicationBrief(briefRecords);
+    const latestDraft = this.parseLatestEmailDraft(existingDrafts);
+    const nextVersion = (latestDraft?.version ?? 0) + 1;
+
+    if (!latestBrief || latestBrief.status !== "ok") {
+      const draft = this.buildEmailDraftRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "failed_generation",
+        campaignGoal: latestBrief?.campaignGoal ?? "missing_campaign_goal",
+        segment: latestBrief?.segment ?? "missing_segment",
+        subject: "generation_failed",
+        preheader: "generation_failed",
+        body: "generation_failed",
+        cta: "generation_failed",
+        requestId,
+        briefRequestId: latestBrief?.requestId ?? "missing-brief",
+        retryable: false,
+      });
+      return {
+        data: { draft },
+        meta: { generatedAt: draft.generatedAt, requestId },
+      };
+    }
+
+    if (requestId.toLowerCase().includes("timeout")) {
+      const timedOutDraft = this.buildEmailDraftRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "timed_out",
+        campaignGoal: latestBrief.campaignGoal,
+        segment: latestBrief.segment,
+        subject: "draft_timed_out",
+        preheader: "draft_timed_out",
+        body: "draft_timed_out",
+        cta: "draft_timed_out",
+        requestId,
+        briefRequestId: latestBrief.requestId,
+        retryable: true,
+      });
+      return {
+        data: { draft: timedOutDraft },
+        meta: { generatedAt: timedOutDraft.generatedAt, requestId },
+      };
+    }
+
+    const draft = this.buildEmailDraftRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      campaignGoal: latestBrief.campaignGoal,
+      segment: latestBrief.segment,
+      subject: `Temat: ${latestBrief.campaignGoal}`,
+      preheader: `Preheader dla segmentu ${latestBrief.segment}`,
+      body: `Body draftu dla celu "${latestBrief.campaignGoal}" z tonem "${latestBrief.tone}".`,
+      cta: `Sprawdz oferte dla ${latestBrief.segment}`,
+      requestId,
+      briefRequestId: latestBrief.requestId,
+      retryable: false,
+    });
+
+    try {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "content.email_draft.generated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: draft,
+      });
+    } catch {
+      return {
+        data: {
+          draft: this.buildEmailDraftRecord({
+            clientId: input.clientId,
+            version: nextVersion,
+            status: "failed_generation",
+            campaignGoal: latestBrief.campaignGoal,
+            segment: latestBrief.segment,
+            subject: "generation_failed",
+            preheader: "generation_failed",
+            body: "generation_failed",
+            cta: "generation_failed",
+            requestId,
+            briefRequestId: latestBrief.requestId,
+            retryable: false,
+          }),
+        },
+        meta: {
+          generatedAt: new Date(),
+          requestId,
+        },
+      };
+    }
+
+    return {
+      data: { draft },
+      meta: { generatedAt: draft.generatedAt, requestId },
+    };
+  }
+
+  async getLatestEmailDraft(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GetLatestEmailDraftInput,
+  ): Promise<GetLatestEmailDraftOutput> {
+    const requestId = `email-draft-latest-${Date.now()}`;
+    await this.validateContentBriefReadAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestEmailDraftAudit(input.clientId, 20);
+    const draft = this.parseLatestEmailDraft(records) ?? null;
+    return {
+      data: { draft },
       meta: { requestId },
     };
   }
@@ -1924,6 +2081,97 @@ export class AnalysisService {
   private parseLatestCommunicationBrief(records: Array<{ details: unknown }>): CommunicationBrief | null {
     for (const record of records) {
       const parsed = this.parseCommunicationBrief(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildEmailDraftRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "timed_out" | "failed_generation";
+    campaignGoal: string;
+    segment: string;
+    subject: string;
+    preheader: string;
+    body: string;
+    cta: string;
+    requestId: string;
+    briefRequestId: string;
+    retryable: boolean;
+  }): EmailDraft {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      campaignGoal: payload.campaignGoal,
+      segment: payload.segment,
+      subject: payload.subject,
+      preheader: payload.preheader,
+      body: payload.body,
+      cta: payload.cta,
+      requestId: payload.requestId,
+      briefRequestId: payload.briefRequestId,
+      generatedAt: new Date(),
+      retryable: payload.retryable,
+    };
+  }
+
+  private parseEmailDraft(details: unknown): EmailDraft | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<EmailDraft>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      typeof value.campaignGoal !== "string" ||
+      typeof value.segment !== "string" ||
+      typeof value.subject !== "string" ||
+      typeof value.preheader !== "string" ||
+      typeof value.body !== "string" ||
+      typeof value.cta !== "string" ||
+      typeof value.requestId !== "string" ||
+      typeof value.briefRequestId !== "string" ||
+      typeof value.retryable !== "boolean"
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "timed_out", "failed_generation"] as const;
+    const isDraftStatus = (item: unknown): item is EmailDraft["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isDraftStatus(value.status)) {
+      return null;
+    }
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      campaignGoal: value.campaignGoal,
+      segment: value.segment,
+      subject: value.subject,
+      preheader: value.preheader,
+      body: value.body,
+      cta: value.cta,
+      requestId: value.requestId,
+      briefRequestId: value.briefRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      retryable: value.retryable,
+    };
+  }
+
+  private parseLatestEmailDraft(records: Array<{ details: unknown }>): EmailDraft | null {
+    for (const record of records) {
+      const parsed = this.parseEmailDraft(record.details);
       if (parsed) {
         return parsed;
       }

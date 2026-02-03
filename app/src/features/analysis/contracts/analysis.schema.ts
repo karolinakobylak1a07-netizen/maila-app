@@ -249,6 +249,33 @@ export const generateCommunicationBriefSchema = z.object({
 export const getLatestCommunicationBriefSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const emailDraftStatusSchema = z.enum([
+  "ok",
+  "timed_out",
+  "failed_generation",
+]);
+export const emailDraftSchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: emailDraftStatusSchema,
+  campaignGoal: z.string().min(1),
+  segment: z.string().min(1),
+  subject: z.string().min(1),
+  preheader: z.string().min(1),
+  body: z.string().min(1),
+  cta: z.string().min(1),
+  requestId: z.string().min(1),
+  briefRequestId: z.string().min(1),
+  generatedAt: z.date(),
+  retryable: z.boolean().default(false),
+});
+export const generateEmailDraftSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestEmailDraftSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -262,6 +289,8 @@ export type GenerateSegmentProposalSchema = z.infer<typeof generateSegmentPropos
 export type GetLatestSegmentProposalSchema = z.infer<typeof getLatestSegmentProposalSchema>;
 export type GenerateCommunicationBriefSchema = z.infer<typeof generateCommunicationBriefSchema>;
 export type GetLatestCommunicationBriefSchema = z.infer<typeof getLatestCommunicationBriefSchema>;
+export type GenerateEmailDraftSchema = z.infer<typeof generateEmailDraftSchema>;
+export type GetLatestEmailDraftSchema = z.infer<typeof getLatestEmailDraftSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -336,3 +365,5 @@ export type SegmentProposalItem = z.infer<typeof segmentProposalItemSchema>;
 export type SegmentProposal = z.infer<typeof segmentProposalSchema>;
 export type CommunicationBriefStatus = z.infer<typeof communicationBriefStatusSchema>;
 export type CommunicationBrief = z.infer<typeof communicationBriefSchema>;
+export type EmailDraftStatus = z.infer<typeof emailDraftStatusSchema>;
+export type EmailDraft = z.infer<typeof emailDraftSchema>;

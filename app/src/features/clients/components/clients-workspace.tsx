@@ -33,6 +33,7 @@ import { FlowPlanCard } from "~/features/analysis/components/flow-plan-card";
 import { CampaignCalendarCard } from "~/features/analysis/components/campaign-calendar-card";
 import { SegmentProposalCard } from "~/features/analysis/components/segment-proposal-card";
 import { CommunicationBriefCard } from "~/features/analysis/components/communication-brief-card";
+import { EmailDraftCard } from "~/features/analysis/components/email-draft-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -95,6 +96,8 @@ export function ClientsWorkspace() {
   const [segmentProposalLoading, setSegmentProposalLoading] = useState(false);
   const [communicationBriefError, setCommunicationBriefError] = useState<string | null>(null);
   const [communicationBriefLoading, setCommunicationBriefLoading] = useState(false);
+  const [emailDraftError, setEmailDraftError] = useState<string | null>(null);
+  const [emailDraftLoading, setEmailDraftLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -211,6 +214,16 @@ export function ClientsWorkspace() {
     },
   );
   const generateCommunicationBriefMutation = api.analysis.generateCommunicationBrief.useMutation();
+  const latestEmailDraftQuery = api.analysis.getLatestEmailDraft.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateEmailDraftMutation = api.analysis.generateEmailDraft.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -279,6 +292,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestCampaignCalendar.invalidate(),
       utils.analysis.getLatestSegmentProposal.invalidate(),
       utils.analysis.getLatestCommunicationBrief.invalidate(),
+      utils.analysis.getLatestEmailDraft.invalidate(),
     ]);
   };
 
@@ -728,6 +742,24 @@ export function ClientsWorkspace() {
     latestCommunicationBriefQuery.error,
   ]);
 
+  useEffect(() => {
+    if (latestEmailDraftQuery.isLoading) {
+      setEmailDraftLoading(true);
+      setEmailDraftError(null);
+      return;
+    }
+
+    if (latestEmailDraftQuery.isError) {
+      setEmailDraftLoading(false);
+      const requestId = extractRequestId(latestEmailDraftQuery.error);
+      setEmailDraftError(withRequestId("Nie udalo sie pobrac draftu email.", requestId));
+      return;
+    }
+
+    setEmailDraftLoading(false);
+    setEmailDraftError(null);
+  }, [latestEmailDraftQuery.isLoading, latestEmailDraftQuery.isError, latestEmailDraftQuery.error]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -804,6 +836,22 @@ export function ClientsWorkspace() {
           "Nie udalo sie wygenerowac briefu komunikacyjnego.",
           extractRequestId(error),
         ),
+      );
+    }
+  };
+
+  const generateEmailDraft = async () => {
+    if (!activeClientId) {
+      setEmailDraftError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateEmailDraftMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setEmailDraftError(
+        withRequestId("Nie udalo sie wygenerowac draftu email.", extractRequestId(error)),
       );
     }
   };
@@ -952,6 +1000,19 @@ export function ClientsWorkspace() {
             }
             brief={latestCommunicationBriefQuery.data?.data.brief ?? null}
             onGenerate={generateCommunicationBrief}
+          />
+        </div>
+        <div className="mt-4">
+          <EmailDraftCard
+            loading={emailDraftLoading}
+            generating={generateEmailDraftMutation.isPending}
+            error={emailDraftError}
+            requestId={
+              latestEmailDraftQuery.data?.meta.requestId ??
+              extractRequestId(latestEmailDraftQuery.error)
+            }
+            draft={latestEmailDraftQuery.data?.data.draft ?? null}
+            onGenerate={generateEmailDraft}
           />
         </div>
         </div>

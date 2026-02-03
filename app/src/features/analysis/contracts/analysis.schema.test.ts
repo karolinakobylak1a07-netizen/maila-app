@@ -24,6 +24,9 @@ import {
   communicationBriefSchema,
   communicationBriefStatusSchema,
   generateCommunicationBriefSchema,
+  emailDraftSchema,
+  emailDraftStatusSchema,
+  generateEmailDraftSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -470,6 +473,34 @@ describe('OptimizationArea Schema', () => {
     it('should validate generateCommunicationBrief input', () => {
       expect(generateCommunicationBriefSchema.safeParse({ clientId: 'cm0000000000000000000000', campaignGoal: 'Goal', segment: 'VIP' }).success).toBe(true);
       expect(generateCommunicationBriefSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse email draft statuses and payload', () => {
+      expect(emailDraftStatusSchema.safeParse('ok').success).toBe(true);
+      expect(emailDraftStatusSchema.safeParse('timed_out').success).toBe(true);
+      expect(emailDraftStatusSchema.safeParse('failed_generation').success).toBe(true);
+
+      const result = emailDraftSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        campaignGoal: 'Zwieksszyc konwersje',
+        segment: 'VIP',
+        subject: 'Temat',
+        preheader: 'Preheader',
+        body: 'Body',
+        cta: 'Kup teraz',
+        requestId: 'req-draft',
+        briefRequestId: 'req-brief',
+        generatedAt: new Date('2026-02-08T12:00:00.000Z'),
+        retryable: false,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateEmailDraft input', () => {
+      expect(generateEmailDraftSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateEmailDraftSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });
