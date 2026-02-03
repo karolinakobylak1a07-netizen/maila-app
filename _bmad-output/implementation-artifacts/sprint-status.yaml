@@ -68,7 +68,7 @@ development_status:
   epic-5: in-progress
   5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: done
   5-2-powiadomienia-o-blokadach-i-brakach-konfiguracji: done
-  5-3-detekcja-konfliktow-wdrozeniowych: backlog
+  5-3-priorytetyzacja-wdrozen-i-alerty-postepow: done
   5-4-eksport-paczki-materialow-do-wdrozenia-w-klaviyo: backlog
   epic-5-retrospective: optional
   epic-6: backlog
