@@ -60,6 +60,9 @@ import {
   communicationImprovementRecommendationItemSchema,
   communicationImprovementRecommendationsSchema,
   getCommunicationImprovementRecommendationsSchema,
+  artifactFeedbackTargetTypeSchema,
+  artifactFeedbackSchema,
+  submitArtifactFeedbackSchema,
 } from './analysis.schema';
 
 const versionMeta = {
@@ -841,6 +844,45 @@ describe('OptimizationArea Schema', () => {
       expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'cm0000000000000000000000', manualAccept: true }).success).toBe(true);
       expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse artifact feedback payload and input', () => {
+      expect(artifactFeedbackTargetTypeSchema.safeParse('recommendation').success).toBe(true);
+      expect(artifactFeedbackTargetTypeSchema.safeParse('draft').success).toBe(true);
+
+      const payloadResult = artifactFeedbackSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        targetType: 'recommendation',
+        artifactId: 'recommendation-1',
+        sourceRequestId: 'req-recommendations',
+        userId: 'u1',
+        rating: 5,
+        comment: 'Bardzo trafna rekomendacja',
+        timestamp: new Date('2026-02-20T10:00:00.000Z'),
+        requestId: 'feedback-1',
+        status: 'saved',
+      });
+      expect(payloadResult.success).toBe(true);
+
+      const inputResult = submitArtifactFeedbackSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        targetType: 'draft',
+        artifactId: 'draft-1',
+        sourceRequestId: 'draft-1',
+        rating: 4,
+        comment: 'Przydatny, ale wymaga drobnych zmian',
+      });
+      expect(inputResult.success).toBe(true);
+
+      expect(
+        submitArtifactFeedbackSchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          targetType: 'draft',
+          artifactId: 'draft-1',
+          rating: 0,
+          comment: 'invalid',
+        }).success,
+      ).toBe(false);
     });
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import type { PersonalizedEmailDraft } from "../contracts/analysis.schema";
+import { ArtifactFeedbackForm } from "./artifact-feedback-form";
 
 type PersonalizedEmailDraftCardProps = {
   loading: boolean;
@@ -9,9 +10,13 @@ type PersonalizedEmailDraftCardProps = {
   requestId: string | null;
   personalizedDraft: PersonalizedEmailDraft | null;
   onGenerate: () => void;
+  onSubmitFeedback?: (payload: { artifactId: string; rating: number; comment: string }) => Promise<void>;
+  feedbackSubmitting?: boolean;
 };
 
 export function PersonalizedEmailDraftCard(props: PersonalizedEmailDraftCardProps) {
+  const personalizedDraft = props.personalizedDraft;
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-4 flex items-center justify-between">
@@ -34,19 +39,19 @@ export function PersonalizedEmailDraftCard(props: PersonalizedEmailDraftCardProp
         <p className="text-sm text-slate-600">Brak wygenerowanej personalizacji draftu.</p>
       )}
 
-      {!props.loading && !props.error && props.personalizedDraft && (
+      {!props.loading && !props.error && personalizedDraft && (
         <div className="space-y-2 text-sm text-slate-700">
           <p>
-            Status: <span className="font-medium">{props.personalizedDraft.status}</span>
+            Status: <span className="font-medium">{personalizedDraft.status}</span>
           </p>
           <p>
-            Wersja: <span className="font-medium">{props.personalizedDraft.version}</span>
+            Wersja: <span className="font-medium">{personalizedDraft.version}</span>
           </p>
-          <p>Cel kampanii: {props.personalizedDraft.campaignGoal}</p>
-          <p>Bazowy draft requestId: {props.personalizedDraft.baseDraftRequestId}</p>
-          {props.personalizedDraft.variants.length > 0 ? (
+          <p>Cel kampanii: {personalizedDraft.campaignGoal}</p>
+          <p>Bazowy draft requestId: {personalizedDraft.baseDraftRequestId}</p>
+          {personalizedDraft.variants.length > 0 ? (
             <ul className="space-y-2">
-              {props.personalizedDraft.variants.map((variant, index) => (
+              {personalizedDraft.variants.map((variant, index) => (
                 <li key={`${variant.segment}-${index}`} className="rounded border border-slate-200 p-2">
                   <p className="font-medium">Segment: {variant.segment}</p>
                   <p>Temat: {variant.subject}</p>
@@ -57,6 +62,19 @@ export function PersonalizedEmailDraftCard(props: PersonalizedEmailDraftCardProp
             </ul>
           ) : (
             <p>Brak wariantow do pokazania.</p>
+          )}
+          {props.onSubmitFeedback && (
+            <ArtifactFeedbackForm
+              title="Ocena personalizacji draftu (1-5) i komentarz"
+              disabled={props.feedbackSubmitting}
+              onSubmitFeedback={async ({ rating, comment }) => {
+                await props.onSubmitFeedback?.({
+                  artifactId: personalizedDraft.requestId,
+                  rating,
+                  comment,
+                });
+              }}
+            />
           )}
         </div>
       )}

@@ -3012,4 +3012,73 @@ describe("AnalysisService.getOptimizationAreas", () => {
       );
     });
   });
+
+  describe("artifact feedback collection (Story 7.1)", () => {
+    it("stores recommendation feedback with rating/comment and actor metadata", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.submitArtifactFeedback("u1", "STRATEGY", {
+        clientId: "client-1",
+        targetType: "recommendation",
+        artifactId: "recommendation-1",
+        sourceRequestId: "req-recommendation-1",
+        rating: 5,
+        comment: "Bardzo trafna rekomendacja",
+        requestId: "feedback-recommendation-1",
+      });
+
+      expect(result.data.feedback.status).toBe("saved");
+      expect(result.data.feedback.rating).toBe(5);
+      expect(result.data.feedback.comment).toBe("Bardzo trafna rekomendacja");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "feedback.recommendation.submitted",
+          requestId: "feedback-recommendation-1",
+          details: expect.objectContaining({
+            userId: "u1",
+            artifactId: "recommendation-1",
+            rating: 5,
+            comment: "Bardzo trafna rekomendacja",
+            timestamp: expect.any(String),
+          }),
+        }),
+      );
+    });
+
+    it("stores draft feedback for content scope", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.submitArtifactFeedback("u1", "CONTENT", {
+        clientId: "client-1",
+        targetType: "draft",
+        artifactId: "draft-1",
+        sourceRequestId: "draft-1",
+        rating: 3,
+        comment: "Wymaga dopracowania CTA",
+        requestId: "feedback-draft-1",
+      });
+
+      expect(result.data.feedback.targetType).toBe("draft");
+      expect(result.data.feedback.requestId).toBe("feedback-draft-1");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "feedback.draft.submitted",
+          requestId: "feedback-draft-1",
+          details: expect.objectContaining({
+            artifactId: "draft-1",
+            rating: 3,
+            comment: "Wymaga dopracowania CTA",
+          }),
+        }),
+      );
+    });
+  });
 });

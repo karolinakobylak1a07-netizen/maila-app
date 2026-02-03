@@ -30,6 +30,7 @@ import {
   getAuditProductContextSchema,
   getProductCoverageAnalysisSchema,
   getCommunicationImprovementRecommendationsSchema,
+  submitArtifactFeedbackSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -65,6 +66,7 @@ type AnalysisServiceContract = Pick<
   | "getAuditProductContext"
   | "getProductCoverageAnalysis"
   | "getCommunicationImprovementRecommendations"
+  | "submitArtifactFeedback"
 >;
 
 export const createAnalysisRouter = (
@@ -480,6 +482,20 @@ export const createAnalysisRouter = (
           return await analysisService.getCommunicationImprovementRecommendations(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    submitArtifactFeedback: protectedProcedure
+      .input(submitArtifactFeedbackSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.submitArtifactFeedback(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role),
             input,
           );
         } catch (error) {

@@ -521,6 +521,31 @@ export const getCommunicationImprovementRecommendationsSchema = z.object({
   clientId: z.string().cuid(),
   manualAccept: z.boolean().optional().default(false),
 });
+export const artifactFeedbackTargetTypeSchema = z.enum([
+  "recommendation",
+  "draft",
+]);
+export const artifactFeedbackSchema = z.object({
+  clientId: z.string().cuid(),
+  targetType: artifactFeedbackTargetTypeSchema,
+  artifactId: z.string().min(1),
+  sourceRequestId: z.string().min(1).nullable(),
+  userId: z.string().min(1),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string(),
+  timestamp: z.date(),
+  requestId: z.string().min(1),
+  status: z.literal("saved"),
+});
+export const submitArtifactFeedbackSchema = z.object({
+  clientId: z.string().cuid(),
+  targetType: artifactFeedbackTargetTypeSchema,
+  artifactId: z.string().min(1),
+  sourceRequestId: z.string().min(1).optional(),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional().default(""),
+  requestId: z.string().min(1).optional(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -548,6 +573,7 @@ export type ExportImplementationDocumentationSchema = z.infer<typeof exportImple
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
+export type SubmitArtifactFeedbackSchema = z.infer<typeof submitArtifactFeedbackSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -653,3 +679,5 @@ export type ProductCoverageAnalysis = z.infer<typeof productCoverageAnalysisSche
 export type CommunicationImprovementRecommendationStatus = z.infer<typeof communicationImprovementRecommendationStatusSchema>;
 export type CommunicationImprovementRecommendationItem = z.infer<typeof communicationImprovementRecommendationItemSchema>;
 export type CommunicationImprovementRecommendations = z.infer<typeof communicationImprovementRecommendationsSchema>;
+export type ArtifactFeedbackTargetType = z.infer<typeof artifactFeedbackTargetTypeSchema>;
+export type ArtifactFeedback = z.infer<typeof artifactFeedbackSchema>;

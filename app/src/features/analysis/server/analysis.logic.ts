@@ -492,6 +492,36 @@ export interface GetCommunicationImprovementRecommendationsOutput {
   };
 }
 
+export interface SubmitArtifactFeedbackInput {
+  clientId: string;
+  targetType: "recommendation" | "draft";
+  artifactId: string;
+  sourceRequestId?: string;
+  rating: number;
+  comment?: string;
+  requestId?: string;
+}
+
+export interface SubmitArtifactFeedbackOutput {
+  data: {
+    feedback: {
+      clientId: string;
+      targetType: "recommendation" | "draft";
+      artifactId: string;
+      sourceRequestId: string | null;
+      userId: string;
+      rating: number;
+      comment: string;
+      timestamp: Date;
+      requestId: string;
+      status: "saved";
+    };
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export class AnalysisService {
   private readonly repository: AnalysisRepository;
   private readonly documentationExportAdapter: DocumentationExportAdapterPort;
@@ -2477,6 +2507,69 @@ export class AnalysisService {
     };
   }
 
+  async submitArtifactFeedback(
+    userId: string,
+    role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
+    input: SubmitArtifactFeedbackInput,
+  ): Promise<SubmitArtifactFeedbackOutput> {
+    const requestId = input.requestId ?? `feedback-${input.targetType}-${Date.now()}`;
+    await this.validateFeedbackAccess(userId, role, input.clientId, input.targetType, requestId);
+
+    const timestamp = new Date();
+    const eventName =
+      input.targetType === "recommendation"
+        ? "feedback.recommendation.submitted"
+        : "feedback.draft.submitted";
+    const comment = (input.comment ?? "").trim();
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName,
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: {
+        timestamp: timestamp.toISOString(),
+        userId,
+        actionType: eventName,
+        artifactId: input.artifactId,
+        diff: {
+          previous: null,
+          current: {
+            targetType: input.targetType,
+            sourceRequestId: input.sourceRequestId ?? null,
+            rating: input.rating,
+            comment,
+          },
+        },
+        targetType: input.targetType,
+        sourceRequestId: input.sourceRequestId ?? null,
+        rating: input.rating,
+        comment,
+      },
+    });
+
+    return {
+      data: {
+        feedback: {
+          clientId: input.clientId,
+          targetType: input.targetType,
+          artifactId: input.artifactId,
+          sourceRequestId: input.sourceRequestId ?? null,
+          userId,
+          rating: input.rating,
+          comment,
+          timestamp,
+          requestId,
+          status: "saved",
+        },
+      },
+      meta: {
+        requestId,
+      },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -2660,6 +2753,37 @@ export class AnalysisService {
         requestId,
       );
     }
+  }
+
+  private async validateFeedbackAccess(
+    userId: string,
+    role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
+    clientId: string,
+    targetType: "recommendation" | "draft",
+    requestId: string,
+  ) {
+    if (targetType === "recommendation") {
+      if (role !== "OWNER" && role !== "STRATEGY") {
+        throw new AnalysisDomainError(
+          "forbidden",
+          "forbidden",
+          { reason: "strategy_or_owner_required", role, targetType },
+          requestId,
+        );
+      }
+      await this.validateAccess(userId, role, clientId);
+      return;
+    }
+
+    if (role !== "OWNER" && role !== "CONTENT") {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "content_or_owner_required", role, targetType },
+        requestId,
+      );
+    }
+    await this.validateContentBriefReadAccess(userId, role, clientId);
   }
 
   private assertSyncStatus(

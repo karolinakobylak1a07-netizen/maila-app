@@ -1,6 +1,7 @@
 "use client";
 
 import type { CommunicationImprovementRecommendations } from "../contracts/analysis.schema";
+import { ArtifactFeedbackForm } from "./artifact-feedback-form";
 
 type CommunicationImprovementRecommendationsCardProps = {
   loading: boolean;
@@ -9,6 +10,8 @@ type CommunicationImprovementRecommendationsCardProps = {
   requestId: string | null;
   recommendations: CommunicationImprovementRecommendations | null;
   onRefresh: () => void;
+  onSubmitFeedback?: (payload: { artifactId: string; rating: number; comment: string }) => Promise<void>;
+  feedbackSubmitting?: boolean;
 };
 
 const priorityIcon: Record<"CRITICAL" | "HIGH" | "MEDIUM" | "LOW", string> = {
@@ -68,6 +71,19 @@ export function CommunicationImprovementRecommendationsCard(
                     {statusIcon[item.status]} {item.productName} • priority: {item.priority} • impact: {item.impactScore}
                   </p>
                   <p className="text-xs text-slate-500">Akcja: {item.action}</p>
+                  {props.onSubmitFeedback && (
+                    <ArtifactFeedbackForm
+                      title="Ocena rekomendacji (1-5) i komentarz"
+                      disabled={props.feedbackSubmitting}
+                      onSubmitFeedback={async ({ rating, comment }) => {
+                        await props.onSubmitFeedback?.({
+                          artifactId: item.id,
+                          rating,
+                          comment,
+                        });
+                      }}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

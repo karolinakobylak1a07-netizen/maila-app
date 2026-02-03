@@ -1,6 +1,7 @@
 "use client";
 
 import type { EmailDraft } from "../contracts/analysis.schema";
+import { ArtifactFeedbackForm } from "./artifact-feedback-form";
 
 type EmailDraftCardProps = {
   loading: boolean;
@@ -9,9 +10,13 @@ type EmailDraftCardProps = {
   requestId: string | null;
   draft: EmailDraft | null;
   onGenerate: () => void;
+  onSubmitFeedback?: (payload: { artifactId: string; rating: number; comment: string }) => Promise<void>;
+  feedbackSubmitting?: boolean;
 };
 
 export function EmailDraftCard(props: EmailDraftCardProps) {
+  const draft = props.draft;
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-4 flex items-center justify-between">
@@ -34,26 +39,39 @@ export function EmailDraftCard(props: EmailDraftCardProps) {
         <p className="text-sm text-slate-600">Brak wygenerowanego draftu email.</p>
       )}
 
-      {!props.loading && !props.error && props.draft && (
+      {!props.loading && !props.error && draft && (
         <div className="space-y-2 text-sm text-slate-700">
           <p>
-            Status: <span className="font-medium">{props.draft.status}</span>
+            Status: <span className="font-medium">{draft.status}</span>
           </p>
           <p>
-            Wersja: <span className="font-medium">{props.draft.version}</span>
+            Wersja: <span className="font-medium">{draft.version}</span>
           </p>
-          <p>Cel kampanii: {props.draft.campaignGoal}</p>
-          <p>Segment: {props.draft.segment}</p>
-          <p>Temat: {props.draft.subject}</p>
-          <p>Preheader: {props.draft.preheader}</p>
-          <p>CTA: {props.draft.cta}</p>
+          <p>Cel kampanii: {draft.campaignGoal}</p>
+          <p>Segment: {draft.segment}</p>
+          <p>Temat: {draft.subject}</p>
+          <p>Preheader: {draft.preheader}</p>
+          <p>CTA: {draft.cta}</p>
           <p className="rounded border border-slate-200 bg-slate-50 p-2 whitespace-pre-wrap">
-            {props.draft.body}
+            {draft.body}
           </p>
-          {props.draft.retryable && (
+          {draft.retryable && (
             <p className="text-amber-700">
               Generowanie przekroczylo SLA - mozesz ponowic bez utraty briefu wejsciowego.
             </p>
+          )}
+          {props.onSubmitFeedback && (
+            <ArtifactFeedbackForm
+              title="Ocena draftu (1-5) i komentarz"
+              disabled={props.feedbackSubmitting}
+              onSubmitFeedback={async ({ rating, comment }) => {
+                await props.onSubmitFeedback?.({
+                  artifactId: draft.requestId,
+                  rating,
+                  comment,
+                });
+              }}
+            />
           )}
         </div>
       )}

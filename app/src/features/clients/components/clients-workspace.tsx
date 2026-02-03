@@ -328,6 +328,7 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const submitArtifactFeedbackMutation = api.analysis.submitArtifactFeedback.useMutation();
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -1304,6 +1305,66 @@ export function ClientsWorkspace() {
     }
   };
 
+  const submitDraftFeedback = async (artifactId: string, rating: number, comment: string) => {
+    if (!activeClientId) {
+      const message = "Najpierw ustaw aktywny kontekst klienta.";
+      setEmailDraftError(message);
+      throw new Error(message);
+    }
+
+    try {
+      await submitArtifactFeedbackMutation.mutateAsync({
+        clientId: activeClientId,
+        targetType: "draft",
+        artifactId,
+        sourceRequestId: artifactId,
+        rating,
+        comment,
+      });
+      setEmailDraftError(null);
+      setPersonalizedDraftError(null);
+    } catch (error) {
+      const message = withRequestId(
+        "Nie udalo sie zapisac feedbacku dla draftu.",
+        extractRequestId(error),
+      );
+      setEmailDraftError(message);
+      throw new Error(message);
+    }
+  };
+
+  const submitRecommendationFeedback = async (
+    artifactId: string,
+    rating: number,
+    comment: string,
+  ) => {
+    if (!activeClientId) {
+      const message = "Najpierw ustaw aktywny kontekst klienta.";
+      setCommunicationRecommendationsError(message);
+      throw new Error(message);
+    }
+
+    try {
+      await submitArtifactFeedbackMutation.mutateAsync({
+        clientId: activeClientId,
+        targetType: "recommendation",
+        artifactId,
+        sourceRequestId:
+          communicationRecommendationsQuery.data?.data.recommendations.requestId,
+        rating,
+        comment,
+      });
+      setCommunicationRecommendationsError(null);
+    } catch (error) {
+      const message = withRequestId(
+        "Nie udalo sie zapisac feedbacku dla rekomendacji.",
+        extractRequestId(error),
+      );
+      setCommunicationRecommendationsError(message);
+      throw new Error(message);
+    }
+  };
+
   const updateImplementationChecklistStep = async (
     stepId: string,
     status: "pending" | "in_progress" | "done",
@@ -1515,6 +1576,10 @@ export function ClientsWorkspace() {
             }
             draft={latestEmailDraftQuery.data?.data.draft ?? null}
             onGenerate={generateEmailDraft}
+            feedbackSubmitting={submitArtifactFeedbackMutation.isPending}
+            onSubmitFeedback={async ({ artifactId, rating, comment }) => {
+              await submitDraftFeedback(artifactId, rating, comment);
+            }}
           />
         </div>
         <div className="mt-4">
@@ -1528,6 +1593,10 @@ export function ClientsWorkspace() {
             }
             personalizedDraft={latestPersonalizedDraftQuery.data?.data.personalizedDraft ?? null}
             onGenerate={generatePersonalizedDraft}
+            feedbackSubmitting={submitArtifactFeedbackMutation.isPending}
+            onSubmitFeedback={async ({ artifactId, rating, comment }) => {
+              await submitDraftFeedback(artifactId, rating, comment);
+            }}
           />
         </div>
         <div className="mt-4">
@@ -1603,6 +1672,10 @@ export function ClientsWorkspace() {
             }
             recommendations={communicationRecommendationsQuery.data?.data.recommendations ?? null}
             onRefresh={refreshCommunicationRecommendations}
+            feedbackSubmitting={submitArtifactFeedbackMutation.isPending}
+            onSubmitFeedback={async ({ artifactId, rating, comment }) => {
+              await submitRecommendationFeedback(artifactId, rating, comment);
+            }}
           />
         </div>
         </div>
