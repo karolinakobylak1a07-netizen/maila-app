@@ -18,6 +18,9 @@ import {
   campaignCalendarSchema,
   campaignCalendarStatusSchema,
   generateCampaignCalendarSchema,
+  segmentProposalSchema,
+  segmentProposalStatusSchema,
+  generateSegmentProposalSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -407,6 +410,37 @@ describe('OptimizationArea Schema', () => {
     it('should validate generateCampaignCalendar input', () => {
       expect(generateCampaignCalendarSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(generateCampaignCalendarSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse segment proposal statuses and payload', () => {
+      expect(segmentProposalStatusSchema.safeParse('ok').success).toBe(true);
+      expect(segmentProposalStatusSchema.safeParse('requires_data_refresh').success).toBe(true);
+      expect(segmentProposalStatusSchema.safeParse('failed_persist').success).toBe(true);
+
+      const result = segmentProposalSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        segments: [
+          {
+            name: 'VIP',
+            entryCriteria: ['Zakup >= 2x', 'AOV >= 200'],
+            objective: 'Zwieksszyc retencje',
+            campaignUseCase: 'Kampanie premium',
+            flowUseCase: 'Winback VIP',
+          },
+        ],
+        requestId: 'req-segment',
+        strategyRequestId: 'req-strategy',
+        generatedAt: new Date('2026-02-06T12:00:00.000Z'),
+        missingData: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateSegmentProposal input', () => {
+      expect(generateSegmentProposalSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateSegmentProposalSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

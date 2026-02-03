@@ -31,6 +31,7 @@ import { OptimizationPrioritiesList } from "~/features/analysis/components/optim
 import { ContextInsightsList } from "~/features/analysis/components/context-insights-list";
 import { FlowPlanCard } from "~/features/analysis/components/flow-plan-card";
 import { CampaignCalendarCard } from "~/features/analysis/components/campaign-calendar-card";
+import { SegmentProposalCard } from "~/features/analysis/components/segment-proposal-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -89,6 +90,8 @@ export function ClientsWorkspace() {
   const [flowPlanLoading, setFlowPlanLoading] = useState(false);
   const [campaignCalendarError, setCampaignCalendarError] = useState<string | null>(null);
   const [campaignCalendarLoading, setCampaignCalendarLoading] = useState(false);
+  const [segmentProposalError, setSegmentProposalError] = useState<string | null>(null);
+  const [segmentProposalLoading, setSegmentProposalLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -185,6 +188,16 @@ export function ClientsWorkspace() {
     },
   );
   const generateCampaignCalendarMutation = api.analysis.generateCampaignCalendar.useMutation();
+  const latestSegmentProposalQuery = api.analysis.getLatestSegmentProposal.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateSegmentProposalMutation = api.analysis.generateSegmentProposal.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -251,6 +264,7 @@ export function ClientsWorkspace() {
       utils.analysis.getContextInsights.invalidate(),
       utils.analysis.getLatestFlowPlan.invalidate(),
       utils.analysis.getLatestCampaignCalendar.invalidate(),
+      utils.analysis.getLatestSegmentProposal.invalidate(),
     ]);
   };
 
@@ -652,6 +666,30 @@ export function ClientsWorkspace() {
     latestCampaignCalendarQuery.error,
   ]);
 
+  useEffect(() => {
+    if (latestSegmentProposalQuery.isLoading) {
+      setSegmentProposalLoading(true);
+      setSegmentProposalError(null);
+      return;
+    }
+
+    if (latestSegmentProposalQuery.isError) {
+      setSegmentProposalLoading(false);
+      const requestId = extractRequestId(latestSegmentProposalQuery.error);
+      setSegmentProposalError(
+        withRequestId("Nie udalo sie pobrac propozycji segmentacji.", requestId),
+      );
+      return;
+    }
+
+    setSegmentProposalLoading(false);
+    setSegmentProposalError(null);
+  }, [
+    latestSegmentProposalQuery.isLoading,
+    latestSegmentProposalQuery.isError,
+    latestSegmentProposalQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -681,6 +719,25 @@ export function ClientsWorkspace() {
       setCampaignCalendarError(
         withRequestId(
           "Nie udalo sie wygenerowac kalendarza kampanii.",
+          extractRequestId(error),
+        ),
+      );
+    }
+  };
+
+  const generateSegmentProposal = async () => {
+    if (!activeClientId) {
+      setSegmentProposalError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateSegmentProposalMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setSegmentProposalError(
+        withRequestId(
+          "Nie udalo sie wygenerowac propozycji segmentacji.",
           extractRequestId(error),
         ),
       );
@@ -805,6 +862,19 @@ export function ClientsWorkspace() {
             }
             calendar={latestCampaignCalendarQuery.data?.data.calendar ?? null}
             onGenerate={generateCampaignCalendar}
+          />
+        </div>
+        <div className="mt-4">
+          <SegmentProposalCard
+            loading={segmentProposalLoading}
+            generating={generateSegmentProposalMutation.isPending}
+            error={segmentProposalError}
+            requestId={
+              latestSegmentProposalQuery.data?.meta.requestId ??
+              extractRequestId(latestSegmentProposalQuery.error)
+            }
+            segmentProposal={latestSegmentProposalQuery.data?.data.segmentProposal ?? null}
+            onGenerate={generateSegmentProposal}
           />
         </div>
         </div>

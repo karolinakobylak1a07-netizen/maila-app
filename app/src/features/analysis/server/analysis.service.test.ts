@@ -25,6 +25,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestEmailStrategyAudit: vi.fn(),
       listLatestFlowPlanAudit: vi.fn(),
       listLatestCampaignCalendarAudit: vi.fn(),
+      listLatestSegmentProposalAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -793,6 +794,170 @@ describe("AnalysisService.getOptimizationAreas", () => {
           requestId: "calendar-3",
         }),
       ).rejects.toThrow(AnalysisDomainError);
+    });
+  });
+
+  describe("generateSegmentProposal (Story 3.4)", () => {
+    it("returns segments with entry criteria and objective when strategy + client data are available (AC1)", async () => {
+      const now = new Date("2026-02-06T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-1",
+        startedAt: new Date("2026-02-06T10:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP", "Nowi", "Powracajacy"],
+        seasonality: "Q1",
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-ok-3",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP", "Nowi", "Powracajacy"],
+            tone: "konkretny",
+            priorities: ["Welcome", "Winback"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-ok-3",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateSegmentProposal("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "segment-req-1",
+      });
+
+      expect(result.data.segmentProposal.status).toBe("ok");
+      expect(result.data.segmentProposal.segments.length).toBeGreaterThanOrEqual(3);
+      expect(result.data.segmentProposal.segments.every((item) => item.entryCriteria.length > 0)).toBe(true);
+      expect(result.data.segmentProposal.segments.every((item) => item.objective.length > 0)).toBe(true);
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "strategy.segment_proposal.generated",
+          requestId: "segment-req-1",
+        }),
+      );
+    });
+
+    it("returns requires_data_refresh with minimal data guidance when data are incomplete/stale (AC2)", async () => {
+      const now = new Date("2026-02-06T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-stale",
+        startedAt: new Date("2025-01-01T08:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: [],
+        seasonality: null,
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s2",
+          requestId: "strategy-ok-4",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-ok-4",
+            lastSyncRequestId: "sync-stale",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.generateSegmentProposal("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "segment-req-2",
+      });
+
+      expect(result.data.segmentProposal.status).toBe("requires_data_refresh");
+      expect(result.data.segmentProposal.segments).toHaveLength(0);
+      expect(result.data.segmentProposal.missingData).toContain("discovery.segments");
+      expect(result.data.segmentProposal.missingData).toContain("sync.fresh_24h");
+    });
+
+    it("returns failed_persist and no partial publish when save fails (AC3)", async () => {
+      const now = new Date("2026-02-06T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-2",
+        startedAt: new Date("2026-02-06T11:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        seasonality: "Q1",
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s3",
+          requestId: "strategy-ok-5",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-ok-5",
+            lastSyncRequestId: "sync-2",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockRejectedValue(new Error("persist_fail"));
+
+      const result = await analysisService.generateSegmentProposal("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "segment-req-3",
+      });
+
+      expect(result.data.segmentProposal.status).toBe("failed_persist");
+      expect(result.data.segmentProposal.segments).toHaveLength(0);
     });
   });
 });

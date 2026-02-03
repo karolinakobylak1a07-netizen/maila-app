@@ -10,6 +10,8 @@ import type {
   InsightItem,
   OptimizationArea,
   OptimizationStatus,
+  SegmentProposal,
+  SegmentProposalItem,
   PriorityLevel,
   ExpectedImpact,
   ConfidenceLevel,
@@ -188,6 +190,34 @@ export interface GenerateCampaignCalendarOutput {
 export interface GetLatestCampaignCalendarOutput {
   data: {
     calendar: CampaignCalendar | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateSegmentProposalInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestSegmentProposalInput {
+  clientId: string;
+}
+
+export interface GenerateSegmentProposalOutput {
+  data: {
+    segmentProposal: SegmentProposal;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestSegmentProposalOutput {
+  data: {
+    segmentProposal: SegmentProposal | null;
   };
   meta: {
     requestId: string;
@@ -740,6 +770,123 @@ export class AnalysisService {
     const calendar = this.parseLatestCampaignCalendar(records) ?? null;
     return {
       data: { calendar },
+      meta: { requestId },
+    };
+  }
+
+  async generateSegmentProposal(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GenerateSegmentProposalInput,
+  ): Promise<GenerateSegmentProposalOutput> {
+    const requestId = input.requestId ?? `segment-proposal-generate-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const [strategyRecords, discovery, syncRun, existingProposals] = await Promise.all([
+      this.repository.listLatestEmailStrategyAudit(input.clientId, 20),
+      this.repository.findDiscoveryAnswers(input.clientId),
+      this.repository.findLatestSyncRun(input.clientId),
+      this.repository.listLatestSegmentProposalAudit(input.clientId, 20),
+    ]);
+    const latestStrategy = this.parseLatestEmailStrategy(strategyRecords);
+    const latestProposal = this.parseLatestSegmentProposal(existingProposals);
+    const nextVersion = (latestProposal?.version ?? 0) + 1;
+
+    const missingData: string[] = [];
+    if (!latestStrategy || latestStrategy.status !== "ok") {
+      missingData.push("approved_strategy");
+    }
+    if (!discovery || discovery.goals.length === 0) {
+      missingData.push("discovery.goals");
+    }
+    if (!discovery || discovery.segments.length === 0) {
+      missingData.push("discovery.segments");
+    }
+    if (!syncRun || syncRun.status !== "OK") {
+      missingData.push("sync.ok");
+    } else {
+      const syncAgeHours = (Date.now() - syncRun.startedAt.getTime()) / (1000 * 60 * 60);
+      if (syncAgeHours > 24) {
+        missingData.push("sync.fresh_24h");
+      }
+    }
+
+    if (missingData.length > 0) {
+      const segmentProposal = this.buildSegmentProposalRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "requires_data_refresh",
+        requestId,
+        strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
+        segments: [],
+        missingData,
+      });
+      return {
+        data: { segmentProposal },
+        meta: { generatedAt: segmentProposal.generatedAt, requestId },
+      };
+    }
+
+    const segments = this.buildSegmentProposalItems({
+      strategy: latestStrategy!,
+      discoverySegments: discovery!.segments,
+    });
+    const segmentProposal = this.buildSegmentProposalRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      requestId,
+      strategyRequestId: latestStrategy!.requestId,
+      segments,
+      missingData: [],
+    });
+
+    try {
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "strategy.segment_proposal.generated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: segmentProposal,
+      });
+    } catch {
+      return {
+        data: {
+          segmentProposal: this.buildSegmentProposalRecord({
+            clientId: input.clientId,
+            version: nextVersion,
+            status: "failed_persist",
+            requestId,
+            strategyRequestId: latestStrategy!.requestId,
+            segments: [],
+            missingData: [],
+          }),
+        },
+        meta: {
+          generatedAt: new Date(),
+          requestId,
+        },
+      };
+    }
+
+    return {
+      data: { segmentProposal },
+      meta: { generatedAt: segmentProposal.generatedAt, requestId },
+    };
+  }
+
+  async getLatestSegmentProposal(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetLatestSegmentProposalInput,
+  ): Promise<GetLatestSegmentProposalOutput> {
+    const requestId = `segment-proposal-latest-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestSegmentProposalAudit(input.clientId, 20);
+    const segmentProposal = this.parseLatestSegmentProposal(records) ?? null;
+    return {
+      data: { segmentProposal },
       meta: { requestId },
     };
   }
@@ -1373,6 +1520,117 @@ export class AnalysisService {
   private parseLatestCampaignCalendar(records: Array<{ details: unknown }>): CampaignCalendar | null {
     for (const record of records) {
       const parsed = this.parseCampaignCalendar(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildSegmentProposalItems(payload: {
+    strategy: EmailStrategy;
+    discoverySegments: string[];
+  }): SegmentProposalItem[] {
+    const candidates = payload.discoverySegments.length > 0
+      ? payload.discoverySegments
+      : payload.strategy.segments;
+    const primaryGoal = payload.strategy.goals[0] ?? "Wzrost konwersji";
+
+    return candidates.slice(0, 4).map((segmentName, index) => ({
+      name: segmentName,
+      entryCriteria: [
+        `Segment source: ${segmentName}`,
+        `Primary goal alignment: ${primaryGoal}`,
+      ],
+      objective: `Dowiezc cel "${primaryGoal}" dla segmentu ${segmentName}.`,
+      campaignUseCase: `Kampanie tygodniowe dla ${segmentName} z KPI ${payload.strategy.kpis[0] ?? "conversion_rate"}.`,
+      flowUseCase: `Flow lifecycle dla ${segmentName} zgodny z priorytetem ${payload.strategy.priorities[index] ?? payload.strategy.priorities[0] ?? "Core automation"}.`,
+    }));
+  }
+
+  private buildSegmentProposalRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "requires_data_refresh" | "failed_persist";
+    segments: SegmentProposalItem[];
+    requestId: string;
+    strategyRequestId: string;
+    missingData: string[];
+  }): SegmentProposal {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      segments: payload.segments,
+      requestId: payload.requestId,
+      strategyRequestId: payload.strategyRequestId,
+      generatedAt: new Date(),
+      missingData: payload.missingData,
+    };
+  }
+
+  private parseSegmentProposal(details: unknown): SegmentProposal | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<SegmentProposal>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      !Array.isArray(value.segments) ||
+      typeof value.requestId !== "string" ||
+      typeof value.strategyRequestId !== "string" ||
+      !Array.isArray(value.missingData)
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "requires_data_refresh", "failed_persist"] as const;
+    const isSegmentStatus = (item: unknown): item is SegmentProposal["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isSegmentStatus(value.status)) {
+      return null;
+    }
+
+    const segments = value.segments
+      .filter(
+        (item): item is SegmentProposalItem =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).name === "string" &&
+          Array.isArray((item as Record<string, unknown>).entryCriteria) &&
+          typeof (item as Record<string, unknown>).objective === "string" &&
+          typeof (item as Record<string, unknown>).campaignUseCase === "string" &&
+          typeof (item as Record<string, unknown>).flowUseCase === "string",
+      )
+      .map((item) => ({
+        name: item.name,
+        entryCriteria: item.entryCriteria,
+        objective: item.objective,
+        campaignUseCase: item.campaignUseCase,
+        flowUseCase: item.flowUseCase,
+      }));
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      segments,
+      requestId: value.requestId,
+      strategyRequestId: value.strategyRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      missingData: value.missingData.filter((item): item is string => typeof item === "string"),
+    };
+  }
+
+  private parseLatestSegmentProposal(records: Array<{ details: unknown }>): SegmentProposal | null {
+    for (const record of records) {
+      const parsed = this.parseSegmentProposal(record.details);
       if (parsed) {
         return parsed;
       }

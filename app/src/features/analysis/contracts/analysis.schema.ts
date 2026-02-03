@@ -193,6 +193,35 @@ export const generateCampaignCalendarSchema = z.object({
 export const getLatestCampaignCalendarSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const segmentProposalStatusSchema = z.enum([
+  "ok",
+  "requires_data_refresh",
+  "failed_persist",
+]);
+export const segmentProposalItemSchema = z.object({
+  name: z.string().min(1),
+  entryCriteria: z.array(z.string().min(1)).min(1),
+  objective: z.string().min(1),
+  campaignUseCase: z.string().min(1),
+  flowUseCase: z.string().min(1),
+});
+export const segmentProposalSchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: segmentProposalStatusSchema,
+  segments: z.array(segmentProposalItemSchema),
+  requestId: z.string().min(1),
+  strategyRequestId: z.string().min(1),
+  generatedAt: z.date(),
+  missingData: z.array(z.string().min(1)).default([]),
+});
+export const generateSegmentProposalSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestSegmentProposalSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -202,6 +231,8 @@ export type GenerateFlowPlanSchema = z.infer<typeof generateFlowPlanSchema>;
 export type GetLatestFlowPlanSchema = z.infer<typeof getLatestFlowPlanSchema>;
 export type GenerateCampaignCalendarSchema = z.infer<typeof generateCampaignCalendarSchema>;
 export type GetLatestCampaignCalendarSchema = z.infer<typeof getLatestCampaignCalendarSchema>;
+export type GenerateSegmentProposalSchema = z.infer<typeof generateSegmentProposalSchema>;
+export type GetLatestSegmentProposalSchema = z.infer<typeof getLatestSegmentProposalSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -271,3 +302,6 @@ export type CampaignCalendarStatus = z.infer<typeof campaignCalendarStatusSchema
 export type CampaignType = z.infer<typeof campaignTypeSchema>;
 export type CampaignCalendarItem = z.infer<typeof campaignCalendarItemSchema>;
 export type CampaignCalendar = z.infer<typeof campaignCalendarSchema>;
+export type SegmentProposalStatus = z.infer<typeof segmentProposalStatusSchema>;
+export type SegmentProposalItem = z.infer<typeof segmentProposalItemSchema>;
+export type SegmentProposal = z.infer<typeof segmentProposalSchema>;
