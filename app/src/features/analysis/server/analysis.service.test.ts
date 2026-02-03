@@ -1685,8 +1685,8 @@ describe("AnalysisService.getOptimizationAreas", () => {
     });
   });
 
-  describe("implementation alerts (Story 5.2)", () => {
-    it("returns blocked status with blocker notifications (AC1)", async () => {
+  describe("implementation alerts and progress prioritization (Story 5.3)", () => {
+    it("returns blocked status and sorts alerts by priority/impact (AC1)", async () => {
       const now = new Date("2026-02-11T12:00:00.000Z");
       mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
       mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
@@ -1700,6 +1700,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       });
       mockRepository.listInventory = vi.fn().mockResolvedValue([]);
       mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
 
       const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
         clientId: "client-1",
@@ -1708,9 +1709,11 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.alerts.status).toBe("blocked");
       expect(result.data.alerts.blockerCount).toBeGreaterThan(0);
       expect(result.data.alerts.alerts.some((alert) => alert.id === "sync-failed-auth")).toBe(true);
+      expect(result.data.alerts.alerts[0]?.priority).toBe("CRITICAL");
+      expect(result.data.alerts.alerts[0]?.impactScore).toBeGreaterThanOrEqual(90);
     });
 
-    it("returns needs_configuration when only GAP inventory is detected (AC2)", async () => {
+    it("returns needs_configuration with config gaps linked to flow priority (AC2)", async () => {
       const now = new Date("2026-02-11T12:10:00.000Z");
       mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
       mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
@@ -1726,6 +1729,30 @@ describe("AnalysisService.getOptimizationAreas", () => {
         { entityType: "FLOW", externalId: "flow-1", name: "Welcome", itemStatus: "GAP" },
       ]);
       mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-priority-1",
+          requestId: "flow-priority-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 2,
+            status: "ok",
+            items: [
+              {
+                name: "Winback",
+                trigger: "Lapsed",
+                objective: "Retention",
+                priority: "CRITICAL",
+                businessReason: "High churn risk",
+              },
+            ],
+            requestId: "flow-priority-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+          },
+        },
+      ]);
 
       const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
         clientId: "client-1",
@@ -1735,9 +1762,11 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.alerts.blockerCount).toBe(0);
       expect(result.data.alerts.configGapCount).toBe(1);
       expect(result.data.alerts.alerts[0]?.type).toBe("configuration_gap");
+      expect(result.data.alerts.alerts[0]?.priority).toBe("CRITICAL");
+      expect(result.data.alerts.alerts[0]?.impactScore).toBeGreaterThanOrEqual(80);
     });
 
-    it("returns ok when no blockers and no configuration gaps (AC3)", async () => {
+    it("returns at_risk progress alert for low completion and ok when fully clean (AC3)", async () => {
       const now = new Date("2026-02-11T12:20:00.000Z");
       mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
       mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
@@ -1752,7 +1781,53 @@ describe("AnalysisService.getOptimizationAreas", () => {
       mockRepository.listInventory = vi.fn().mockResolvedValue([
         { entityType: "FLOW", externalId: "flow-1", name: "Welcome", itemStatus: "OK" },
       ]);
-      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([
+        {
+          id: "progress-1",
+          requestId: "checklist-progress-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 3,
+            status: "ok",
+            requestId: "checklist-progress-1",
+            generatedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            totalSteps: 10,
+            completedSteps: 2,
+            progressPercent: 20,
+            steps: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+
+      const atRiskResult = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
+        clientId: "client-1",
+      });
+      expect(atRiskResult.data.alerts.status).toBe("at_risk");
+      expect(atRiskResult.data.alerts.alerts.some((alert) => alert.type === "progress")).toBe(true);
+      expect(atRiskResult.data.alerts.alerts[0]?.progressState).toBe("blocked");
+
+      mockRepository.listLatestImplementationChecklistAudit = vi.fn().mockResolvedValue([
+        {
+          id: "progress-2",
+          requestId: "checklist-progress-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 4,
+            status: "ok",
+            requestId: "checklist-progress-2",
+            generatedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            totalSteps: 4,
+            completedSteps: 4,
+            progressPercent: 100,
+            steps: [],
+          },
+        },
+      ]);
 
       const result = await analysisService.getImplementationAlerts("u1", "OPERATIONS", {
         clientId: "client-1",

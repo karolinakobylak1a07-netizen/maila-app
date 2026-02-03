@@ -1567,18 +1567,24 @@ export class AnalysisService {
     const requestId = `implementation-alerts-${Date.now()}`;
     await this.validateImplementationReadAccess(userId, role, input.clientId);
 
-    const [syncRun, inventory, checklistRecords] = await Promise.all([
+    const [syncRun, inventory, checklistRecords, flowPlanRecords] = await Promise.all([
       this.repository.findLatestSyncRun(input.clientId),
       this.repository.listInventory(input.clientId),
       this.repository.listLatestImplementationChecklistAudit(input.clientId, 20),
+      this.repository.listLatestFlowPlanAudit(input.clientId, 20),
     ]);
 
     const alerts: ImplementationAlert[] = [];
+    const flowPlan = this.parseLatestFlowPlan(flowPlanRecords ?? []);
+    const highestFlowPriority = this.resolveHighestFlowPriority(flowPlan);
     if (!syncRun) {
       alerts.push({
         id: "sync-missing",
         type: "blocker",
         severity: "critical",
+        priority: "CRITICAL",
+        impactScore: 95,
+        progressState: "blocked",
         title: "Brak synchronizacji danych",
         description: "Uruchom sync Klaviyo przed wdrozeniem checklisty.",
         source: "sync",
@@ -1589,6 +1595,9 @@ export class AnalysisService {
           id: "sync-failed-auth",
           type: "blocker",
           severity: "critical",
+          priority: "CRITICAL",
+          impactScore: 92,
+          progressState: "blocked",
           title: "Blokada: autoryzacja Klaviyo niepowiodla sie",
           description: "Popraw token API i ponow synchronizacje.",
           source: "sync",
@@ -1600,6 +1609,9 @@ export class AnalysisService {
           id: "sync-timeout",
           type: "blocker",
           severity: "warning",
+          priority: "HIGH",
+          impactScore: 80,
+          progressState: "at_risk",
           title: "Sync zakonczony czesciowo",
           description: "Powtorz synchronizacje przed wdrozeniem.",
           source: "sync",
@@ -1613,6 +1625,9 @@ export class AnalysisService {
         id: "sync-stale",
         type: "blocker",
         severity: "warning",
+        priority: "HIGH",
+        impactScore: 72,
+        progressState: "at_risk",
         title: "Dane sync sa nieaktualne",
         description: "Od ostatniej synchronizacji minelo ponad 24h.",
         source: "sync",
@@ -1626,18 +1641,24 @@ export class AnalysisService {
         id: `config-gap-${index + 1}-${item.externalId}`,
         type: "configuration_gap" as const,
         severity: "warning" as const,
+        priority: highestFlowPriority,
+        impactScore: this.resolveConfigGapImpactScore(highestFlowPriority),
+        progressState: "at_risk" as const,
         title: `Brak konfiguracji: ${item.name}`,
         description: `Element ${item.entityType} wymaga uzupelnienia przed wdrozeniem.`,
         source: "inventory",
       }));
     alerts.push(...configurationGapItems);
 
-    const checklist = this.parseLatestImplementationChecklist(checklistRecords);
+    const checklist = this.parseLatestImplementationChecklist(checklistRecords ?? []);
     if (checklist?.status === "conflict_requires_refresh") {
       alerts.push({
         id: "checklist-conflict",
         type: "blocker",
         severity: "warning",
+        priority: "HIGH",
+        impactScore: 78,
+        progressState: "at_risk",
         title: "Konflikt wersji checklisty",
         description: "Odswiez checkliste przed kolejnym zapisem zmian.",
         source: "implementation_checklist",
@@ -1648,16 +1669,51 @@ export class AnalysisService {
         id: "checklist-transaction-error",
         type: "blocker",
         severity: "warning",
+        priority: "HIGH",
+        impactScore: 74,
+        progressState: "at_risk",
         title: "Blad zapisu checklisty",
         description: "Poprzedni stan zostal zachowany, ponow aktualizacje krokow.",
         source: "implementation_checklist",
       });
     }
+    if (checklist && checklist.progressPercent < 100) {
+      const progressState = checklist.progressPercent < 40 ? "blocked" : "at_risk";
+      const priority = checklist.progressPercent < 40 ? "HIGH" : "MEDIUM";
+      alerts.push({
+        id: "checklist-progress",
+        type: "progress",
+        severity: checklist.progressPercent < 40 ? "critical" : "warning",
+        priority,
+        impactScore: Math.max(35, 100 - checklist.progressPercent),
+        progressState,
+        progressPercent: checklist.progressPercent,
+        title: "Postep wdrozenia wymaga uwagi",
+        description: `Zrealizowano ${checklist.completedSteps}/${checklist.totalSteps} krokow checklisty.`,
+        source: "implementation_checklist",
+      });
+    }
 
-    const blockerCount = alerts.filter((alert) => alert.type === "blocker").length;
-    const configGapCount = alerts.filter((alert) => alert.type === "configuration_gap").length;
-    const status =
-      blockerCount > 0 ? "blocked" : configGapCount > 0 ? "needs_configuration" : "ok";
+    const sortedAlerts = alerts.sort((left, right) => {
+      const priorityDelta =
+        this.priorityWeight(right.priority) - this.priorityWeight(left.priority);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+      return right.impactScore - left.impactScore;
+    });
+
+    const blockerCount = sortedAlerts.filter((alert) => alert.type === "blocker").length;
+    const configGapCount = sortedAlerts.filter((alert) => alert.type === "configuration_gap").length;
+    const hasBlockedProgress = sortedAlerts.some((alert) => alert.progressState === "blocked");
+    const hasAtRiskProgress = sortedAlerts.some((alert) => alert.progressState === "at_risk");
+    const status = blockerCount > 0
+      ? "blocked"
+      : configGapCount > 0
+        ? "needs_configuration"
+        : hasBlockedProgress || hasAtRiskProgress
+          ? "at_risk"
+          : "ok";
     const generatedAt = new Date();
     return {
       data: {
@@ -1668,7 +1724,7 @@ export class AnalysisService {
           generatedAt,
           blockerCount,
           configGapCount,
-          alerts,
+          alerts: sortedAlerts,
         },
       },
       meta: { requestId },
@@ -3001,6 +3057,42 @@ export class AnalysisService {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 48);
+  }
+
+  private resolveHighestFlowPriority(flowPlan: FlowPlan | null): PriorityLevel {
+    if (!flowPlan || flowPlan.items.length === 0) {
+      return "MEDIUM";
+    }
+    const sorted = [...flowPlan.items].sort(
+      (left, right) => this.priorityWeight(right.priority) - this.priorityWeight(left.priority),
+    );
+    return sorted[0]?.priority ?? "MEDIUM";
+  }
+
+  private resolveConfigGapImpactScore(priority: PriorityLevel): number {
+    if (priority === "CRITICAL") {
+      return 82;
+    }
+    if (priority === "HIGH") {
+      return 72;
+    }
+    if (priority === "MEDIUM") {
+      return 58;
+    }
+    return 45;
+  }
+
+  private priorityWeight(priority: PriorityLevel): number {
+    if (priority === "CRITICAL") {
+      return 4;
+    }
+    if (priority === "HIGH") {
+      return 3;
+    }
+    if (priority === "MEDIUM") {
+      return 2;
+    }
+    return 1;
   }
 
   private collectMissingContext(

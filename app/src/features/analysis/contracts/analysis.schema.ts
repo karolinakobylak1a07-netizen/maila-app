@@ -352,12 +352,22 @@ export const updateImplementationChecklistStepSchema = z.object({
 export const implementationAlertTypeSchema = z.enum([
   "blocker",
   "configuration_gap",
+  "progress",
 ]);
 export const implementationAlertSeveritySchema = z.enum(["critical", "warning"]);
+export const implementationAlertProgressStateSchema = z.enum([
+  "blocked",
+  "at_risk",
+  "on_track",
+]);
 export const implementationAlertSchema = z.object({
   id: z.string().min(1),
   type: implementationAlertTypeSchema,
   severity: implementationAlertSeveritySchema,
+  priority: priorityLevelSchema,
+  impactScore: expectedImpactSchema,
+  progressState: implementationAlertProgressStateSchema,
+  progressPercent: z.number().int().min(0).max(100).optional(),
   title: z.string().min(1),
   description: z.string().min(1),
   source: z.string().min(1),
@@ -366,6 +376,7 @@ export const implementationAlertsStatusSchema = z.enum([
   "ok",
   "blocked",
   "needs_configuration",
+  "at_risk",
 ]);
 export const implementationAlertsSchema = z.object({
   clientId: z.string().cuid(),
@@ -485,6 +496,7 @@ export type ImplementationChecklistStep = z.infer<typeof implementationChecklist
 export type ImplementationChecklist = z.infer<typeof implementationChecklistSchema>;
 export type ImplementationAlertType = z.infer<typeof implementationAlertTypeSchema>;
 export type ImplementationAlertSeverity = z.infer<typeof implementationAlertSeveritySchema>;
+export type ImplementationAlertProgressState = z.infer<typeof implementationAlertProgressStateSchema>;
 export type ImplementationAlert = z.infer<typeof implementationAlertSchema>;
 export type ImplementationAlertsStatus = z.infer<typeof implementationAlertsStatusSchema>;
 export type ImplementationAlerts = z.infer<typeof implementationAlertsSchema>;

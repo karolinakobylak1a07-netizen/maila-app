@@ -10,6 +10,23 @@ type ImplementationAlertsCardProps = {
 };
 
 export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
+  const statusIcon =
+    props.alerts?.status === "blocked"
+      ? "🛑"
+      : props.alerts?.status === "needs_configuration" || props.alerts?.status === "at_risk"
+        ? "⚠️"
+        : "✅";
+
+  const progressIcon = (progressState: "blocked" | "at_risk" | "on_track") => {
+    if (progressState === "blocked") {
+      return "🛑";
+    }
+    if (progressState === "at_risk") {
+      return "⚠️";
+    }
+    return "✅";
+  };
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-4 flex items-center justify-between">
@@ -32,7 +49,7 @@ export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
       {!props.loading && !props.error && props.alerts && (
         <div className="space-y-2 text-sm text-slate-700">
           <p>
-            Status: <span className="font-medium">{props.alerts.status}</span>
+            Status: <span className="font-medium">{statusIcon} {props.alerts.status}</span>
           </p>
           {props.alerts.alerts.length === 0 ? (
             <p>Brak aktywnych blokad i brakow konfiguracji.</p>
@@ -40,11 +57,16 @@ export function ImplementationAlertsCard(props: ImplementationAlertsCardProps) {
             <ul className="space-y-2">
               {props.alerts.alerts.map((alert) => (
                 <li key={alert.id} className="rounded border border-slate-200 p-2">
-                  <p className="font-medium">{alert.title}</p>
+                  <p className="font-medium">{progressIcon(alert.progressState)} {alert.title}</p>
                   <p>{alert.description}</p>
                   <p className="text-xs text-slate-500">
-                    {alert.type} • {alert.severity} • source: {alert.source}
+                    {alert.type} • {alert.severity} • priority: {alert.priority} • impact: {alert.impactScore} • source: {alert.source}
                   </p>
+                  {typeof alert.progressPercent === "number" && (
+                    <p className="text-xs text-slate-500">
+                      Postep: {alert.progressPercent}% • status: {alert.progressState}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

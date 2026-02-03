@@ -37,6 +37,7 @@ import {
   updateImplementationChecklistStepSchema,
   implementationAlertsSchema,
   implementationAlertsStatusSchema,
+  implementationAlertProgressStateSchema,
   getImplementationAlertsSchema,
 } from './analysis.schema';
 
@@ -597,6 +598,10 @@ describe('OptimizationArea Schema', () => {
       expect(implementationAlertsStatusSchema.safeParse('ok').success).toBe(true);
       expect(implementationAlertsStatusSchema.safeParse('blocked').success).toBe(true);
       expect(implementationAlertsStatusSchema.safeParse('needs_configuration').success).toBe(true);
+      expect(implementationAlertsStatusSchema.safeParse('at_risk').success).toBe(true);
+      expect(implementationAlertProgressStateSchema.safeParse('blocked').success).toBe(true);
+      expect(implementationAlertProgressStateSchema.safeParse('at_risk').success).toBe(true);
+      expect(implementationAlertProgressStateSchema.safeParse('on_track').success).toBe(true);
 
       const result = implementationAlertsSchema.safeParse({
         clientId: 'cm0000000000000000000000',
@@ -610,6 +615,10 @@ describe('OptimizationArea Schema', () => {
             id: 'alert-1',
             type: 'blocker',
             severity: 'critical',
+            priority: 'CRITICAL',
+            impactScore: 95,
+            progressState: 'blocked',
+            progressPercent: 20,
             title: 'Brak sync',
             description: 'Uruchom sync',
             source: 'sync',
