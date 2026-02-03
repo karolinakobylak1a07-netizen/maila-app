@@ -67,7 +67,7 @@ development_status:
   epic-4-retrospective: optional
   epic-5: in-progress
   5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: done
-  5-2-mapa-zaleznosci-miedzy-flow-segmentami-i-kampaniami: backlog
+  5-2-powiadomienia-o-blokadach-i-brakach-konfiguracji: done
   5-3-detekcja-konfliktow-wdrozeniowych: backlog
   5-4-eksport-paczki-materialow-do-wdrozenia-w-klaviyo: backlog
   epic-5-retrospective: optional
