@@ -1,6 +1,6 @@
 # Story 2.3: Wykrywanie slabych ogniw i priorytetyzacja optymalizacji
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

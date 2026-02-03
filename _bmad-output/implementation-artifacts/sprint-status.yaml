@@ -50,7 +50,7 @@ development_status:
   epic-2: in-progress
   2-1-sync-i-inwentaryzacja-danych-klaviyo: done
   2-2-raport-luk-konfiguracji: done
-  2-3-wykrywanie-slabych-ogniw-i-priorytetyzacja-optymalizacji: in-progress
+  2-3-wykrywanie-slabych-ogniw-i-priorytetyzacja-optymalizacji: done
   2-4-insighty-powiazane-z-kontekstem-klienta: backlog
   epic-2-retrospective: optional
   epic-3: backlog
