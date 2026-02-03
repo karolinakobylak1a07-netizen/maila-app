@@ -41,6 +41,7 @@ import { AuditProductContextCard } from "~/features/analysis/components/audit-pr
 import { ProductCoverageAnalysisCard } from "~/features/analysis/components/product-coverage-analysis-card";
 import { CommunicationImprovementRecommendationsCard } from "~/features/analysis/components/communication-improvement-recommendations-card";
 import { CampaignEffectivenessAnalysisCard } from "~/features/analysis/components/campaign-effectiveness-analysis-card";
+import { StrategyKPIAnalysisCard } from "~/features/analysis/components/strategy-kpi-analysis-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -131,6 +132,9 @@ export function ClientsWorkspace() {
   const [campaignEffectivenessError, setCampaignEffectivenessError] = useState<string | null>(null);
   const [campaignEffectivenessLoading, setCampaignEffectivenessLoading] = useState(false);
   const [campaignEffectivenessRefreshing, setCampaignEffectivenessRefreshing] = useState(false);
+  const [strategyKpiError, setStrategyKpiError] = useState<string | null>(null);
+  const [strategyKpiLoading, setStrategyKpiLoading] = useState(false);
+  const [strategyKpiRefreshing, setStrategyKpiRefreshing] = useState(false);
 
   const utils = api.useUtils();
 
@@ -348,6 +352,17 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const strategyKpiQuery = api.analysis.getStrategyKPIAnalysis.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+      rangeStart: campaignEffectivenessRange.rangeStart,
+      rangeEnd: campaignEffectivenessRange.rangeEnd,
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const submitArtifactFeedbackMutation = api.analysis.submitArtifactFeedback.useMutation();
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
@@ -429,6 +444,7 @@ export function ClientsWorkspace() {
       utils.analysis.getProductCoverageAnalysis.invalidate(),
       utils.analysis.getCommunicationImprovementRecommendations.invalidate(),
       utils.analysis.getCampaignEffectivenessAnalysis.invalidate(),
+      utils.analysis.getStrategyKPIAnalysis.invalidate(),
     ]);
   };
 
@@ -1064,6 +1080,24 @@ export function ClientsWorkspace() {
     campaignEffectivenessQuery.error,
   ]);
 
+  useEffect(() => {
+    if (strategyKpiQuery.isLoading) {
+      setStrategyKpiLoading(true);
+      setStrategyKpiError(null);
+      return;
+    }
+
+    if (strategyKpiQuery.isError) {
+      setStrategyKpiLoading(false);
+      const requestId = extractRequestId(strategyKpiQuery.error);
+      setStrategyKpiError(withRequestId("Nie udalo sie pobrac KPI strategii.", requestId));
+      return;
+    }
+
+    setStrategyKpiLoading(false);
+    setStrategyKpiError(null);
+  }, [strategyKpiQuery.isLoading, strategyKpiQuery.isError, strategyKpiQuery.error]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1369,6 +1403,25 @@ export function ClientsWorkspace() {
       );
     } finally {
       setCampaignEffectivenessRefreshing(false);
+    }
+  };
+
+  const refreshStrategyKpiAnalysis = async () => {
+    if (!activeClientId) {
+      setStrategyKpiError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setStrategyKpiRefreshing(true);
+    try {
+      await strategyKpiQuery.refetch();
+      setStrategyKpiError(null);
+    } catch (error) {
+      setStrategyKpiError(
+        withRequestId("Nie udalo sie odswiezyc KPI strategii.", extractRequestId(error)),
+      );
+    } finally {
+      setStrategyKpiRefreshing(false);
     }
   };
 
@@ -1756,6 +1809,19 @@ export function ClientsWorkspace() {
             }
             analysis={campaignEffectivenessQuery.data?.data.analysis ?? null}
             onRefresh={refreshCampaignEffectivenessAnalysis}
+          />
+        </div>
+        <div className="mt-4">
+          <StrategyKPIAnalysisCard
+            loading={strategyKpiLoading}
+            refreshing={strategyKpiRefreshing}
+            error={strategyKpiError}
+            requestId={
+              strategyKpiQuery.data?.meta.requestId ??
+              extractRequestId(strategyKpiQuery.error)
+            }
+            analysis={strategyKpiQuery.data?.data.analysis ?? null}
+            onRefresh={refreshStrategyKpiAnalysis}
           />
         </div>
         </div>

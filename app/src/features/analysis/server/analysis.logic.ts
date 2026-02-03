@@ -533,6 +533,64 @@ export interface GetCampaignEffectivenessAnalysisOutput {
   };
 }
 
+export interface GetStrategyKPIAnalysisInput {
+  clientId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+}
+
+export interface GetStrategyKPIAnalysisOutput {
+  data: {
+    analysis: {
+      clientId: string;
+      requestId: string;
+      generatedAt: Date;
+      rangeStart: Date;
+      rangeEnd: Date;
+      status: "ok" | "low_engagement" | "missing_data";
+      overall: {
+        campaignCount: number;
+        openRate: number;
+        clickRate: number;
+        cvr: number;
+        revenuePerRecipient: number;
+        avgTimeToOpen: number;
+      };
+      segmentSummaries: Array<{
+        segmentId: string;
+        segmentName: string;
+        metrics: {
+          openRate: number;
+          clickRate: number;
+          cvr: number;
+          revenuePerRecipient: number;
+          avgTimeToOpen: number;
+        };
+        campaignCount: number;
+      }>;
+      recommendationSummaries: Array<{
+        recommendationId: string;
+        recommendationTitle: string;
+        metrics: {
+          openRate: number;
+          clickRate: number;
+          cvr: number;
+          revenuePerRecipient: number;
+          avgTimeToOpen: number;
+        };
+        campaignCount: number;
+      }>;
+      topPerformers: {
+        segmentId: string | null;
+        recommendationId: string | null;
+      };
+    };
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export interface SubmitArtifactFeedbackInput {
   clientId: string;
   targetType: "recommendation" | "draft";
@@ -2634,6 +2692,110 @@ export class AnalysisService {
     };
   }
 
+  async getStrategyKPIAnalysis(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetStrategyKPIAnalysisInput,
+  ): Promise<GetStrategyKPIAnalysisOutput> {
+    const requestId = `strategy-kpi-analysis-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    if (input.rangeStart.getTime() > input.rangeEnd.getTime()) {
+      throw new AnalysisDomainError(
+        "validation",
+        "INVALID_DATE_RANGE",
+        {
+          rangeStart: input.rangeStart.toISOString(),
+          rangeEnd: input.rangeEnd.toISOString(),
+        },
+        requestId,
+      );
+    }
+
+    const [logs, segmentProposalRecords, contextRecord, flowPlanRecords, campaignRecords] =
+      await Promise.all([
+        this.repository.listLatestClientAuditLogs(input.clientId, 500),
+        this.repository.listLatestSegmentProposalAudit(input.clientId, 20),
+        this.repository.findAuditProductContext(input.clientId),
+        this.repository.listLatestFlowPlanAudit(input.clientId, 20),
+        this.repository.listLatestCampaignCalendarAudit(input.clientId, 20),
+      ]);
+
+    const logsInRange = logs.filter(
+      (log) =>
+        log.createdAt.getTime() >= input.rangeStart.getTime() &&
+        log.createdAt.getTime() <= input.rangeEnd.getTime(),
+    );
+
+    const performanceRows = logsInRange
+      .filter(
+        (log) =>
+          log.eventName === "campaign.performance.reported" ||
+          log.eventName === "flow.performance.reported",
+      )
+      .map((log) => this.parseStrategyPerformanceRow(log.details))
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    const segmentProposal = this.parseLatestSegmentProposal(segmentProposalRecords ?? []);
+    const segmentMap = this.buildSegmentMap(segmentProposal);
+
+    const flowPlan = this.parseLatestFlowPlan(flowPlanRecords ?? []);
+    const campaignCalendar = this.parseLatestCampaignCalendar(campaignRecords ?? []);
+    const recommendationMap = this.buildRecommendationMapForKpi(
+      requestId,
+      contextRecord,
+      flowPlan,
+      campaignCalendar,
+    );
+
+    const mappedRows = performanceRows.map((row) => {
+      const segmentName = segmentMap.get(row.segmentId) ?? row.segmentId;
+      const recommendation = recommendationMap.get(row.draftId);
+      return {
+        ...row,
+        segmentName,
+        recommendationId: recommendation?.id ?? row.draftId,
+        recommendationTitle: recommendation?.title ?? "Niezmapowana rekomendacja",
+      };
+    });
+
+    const overall = this.aggregateStrategyKpiMetrics(mappedRows);
+    const segmentSummaries = this.buildStrategySegmentSummaries(mappedRows);
+    const recommendationSummaries = this.buildStrategyRecommendationSummaries(mappedRows);
+
+    const hasData = mappedRows.length > 0;
+    const engagementScore = overall.openRate * 0.4 + overall.clickRate * 0.3 + overall.cvr * 0.3;
+    const status: "ok" | "low_engagement" | "missing_data" = !hasData
+      ? "missing_data"
+      : engagementScore >= 35
+        ? "ok"
+        : "low_engagement";
+
+    const topSegment = segmentSummaries[0]?.segmentId ?? null;
+    const topRecommendation = recommendationSummaries[0]?.recommendationId ?? null;
+
+    return {
+      data: {
+        analysis: {
+          clientId: input.clientId,
+          requestId,
+          generatedAt: new Date(),
+          rangeStart: input.rangeStart,
+          rangeEnd: input.rangeEnd,
+          status,
+          overall,
+          segmentSummaries,
+          recommendationSummaries,
+          topPerformers: {
+            segmentId: topSegment,
+            recommendationId: topRecommendation,
+          },
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   async submitArtifactFeedback(
     userId: string,
     role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
@@ -2824,6 +2986,234 @@ export class AnalysisService {
     }
 
     return Number((Math.max(0, Math.min(5, averageRating)) * 20).toFixed(2));
+  }
+
+  private parseStrategyPerformanceRow(
+    details: unknown,
+  ): {
+    openRate: number;
+    clickRate: number;
+    cvr: number;
+    revenuePerRecipient: number;
+    avgTimeToOpen: number;
+    segmentId: string;
+    draftId: string;
+  } | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+    const payload = details as Record<string, unknown>;
+    const openRate = Number(payload.openRate);
+    const clickRate = Number(payload.clickRate);
+    const conversions = Number(payload.conversions);
+    const revenue = Number(payload.revenue);
+    const recipients = Math.max(1, Number(payload.recipients ?? 1));
+    const avgTimeToOpen = Number(payload.avgTimeToOpen ?? 0);
+    const segmentIdRaw = payload.segmentId;
+    const draftIdRaw = payload.draftId;
+    const segmentId =
+      typeof segmentIdRaw === "string" && segmentIdRaw.trim().length > 0
+        ? segmentIdRaw
+        : "unknown-segment";
+    const draftId =
+      typeof draftIdRaw === "string" && draftIdRaw.trim().length > 0
+        ? draftIdRaw
+        : "unknown-draft";
+
+    if (
+      !Number.isFinite(openRate) ||
+      !Number.isFinite(clickRate) ||
+      !Number.isFinite(conversions) ||
+      !Number.isFinite(revenue) ||
+      !Number.isFinite(avgTimeToOpen)
+    ) {
+      return null;
+    }
+
+    return {
+      openRate: Math.max(0, openRate),
+      clickRate: Math.max(0, clickRate),
+      cvr: Math.max(0, (Math.max(0, conversions) / recipients) * 100),
+      revenuePerRecipient: Math.max(0, revenue) / recipients,
+      avgTimeToOpen: Math.max(0, avgTimeToOpen),
+      segmentId,
+      draftId,
+    };
+  }
+
+  private buildSegmentMap(segmentProposal: SegmentProposal | null): Map<string, string> {
+    const map = new Map<string, string>();
+    if (!segmentProposal) {
+      return map;
+    }
+
+    for (const segment of segmentProposal.segments) {
+      const slug = this.slugify(segment.name);
+      map.set(slug, segment.name);
+      map.set(segment.name, segment.name);
+    }
+    return map;
+  }
+
+  private buildRecommendationMapForKpi(
+    requestId: string,
+    contextRecord: { mainProducts: string[] } | null,
+    flowPlan: FlowPlan | null,
+    campaignCalendar: CampaignCalendar | null,
+  ): Map<string, { id: string; title: string }> {
+    const map = new Map<string, { id: string; title: string }>();
+    if (!contextRecord || contextRecord.mainProducts.length === 0) {
+      return map;
+    }
+
+    const recommendations = contextRecord.mainProducts
+      .map((productName) =>
+        this.buildCommunicationImprovementRecommendationItem(
+          this.buildProductCoverageItem(productName, flowPlan, campaignCalendar),
+          requestId,
+        ),
+      )
+      .sort((left, right) => {
+        const priorityDelta =
+          this.priorityWeight(right.priority) - this.priorityWeight(left.priority);
+        if (priorityDelta !== 0) {
+          return priorityDelta;
+        }
+        return right.impactScore - left.impactScore;
+      });
+
+    for (const recommendation of recommendations) {
+      map.set(recommendation.id, {
+        id: recommendation.id,
+        title: recommendation.title,
+      });
+    }
+    return map;
+  }
+
+  private aggregateStrategyKpiMetrics(
+    rows: Array<{
+      openRate: number;
+      clickRate: number;
+      cvr: number;
+      revenuePerRecipient: number;
+      avgTimeToOpen: number;
+    }>,
+  ) {
+    if (rows.length === 0) {
+      return {
+        campaignCount: 0,
+        openRate: 0,
+        clickRate: 0,
+        cvr: 0,
+        revenuePerRecipient: 0,
+        avgTimeToOpen: 0,
+      };
+    }
+
+    const totals = rows.reduce(
+      (acc, row) => ({
+        openRate: acc.openRate + row.openRate,
+        clickRate: acc.clickRate + row.clickRate,
+        cvr: acc.cvr + row.cvr,
+        revenuePerRecipient: acc.revenuePerRecipient + row.revenuePerRecipient,
+        avgTimeToOpen: acc.avgTimeToOpen + row.avgTimeToOpen,
+      }),
+      {
+        openRate: 0,
+        clickRate: 0,
+        cvr: 0,
+        revenuePerRecipient: 0,
+        avgTimeToOpen: 0,
+      },
+    );
+
+    return {
+      campaignCount: rows.length,
+      openRate: Number((totals.openRate / rows.length).toFixed(2)),
+      clickRate: Number((totals.clickRate / rows.length).toFixed(2)),
+      cvr: Number((totals.cvr / rows.length).toFixed(2)),
+      revenuePerRecipient: Number((totals.revenuePerRecipient / rows.length).toFixed(2)),
+      avgTimeToOpen: Number((totals.avgTimeToOpen / rows.length).toFixed(2)),
+    };
+  }
+
+  private buildStrategySegmentSummaries(
+    rows: Array<{
+      segmentId: string;
+      segmentName: string;
+      openRate: number;
+      clickRate: number;
+      cvr: number;
+      revenuePerRecipient: number;
+      avgTimeToOpen: number;
+    }>,
+  ) {
+    const groups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = row.segmentId;
+      const current = groups.get(key) ?? [];
+      current.push(row);
+      groups.set(key, current);
+    }
+
+    return Array.from(groups.entries())
+      .map(([segmentId, entries]) => ({
+        segmentId,
+        segmentName: entries[0]?.segmentName ?? segmentId,
+        metrics: this.aggregateStrategyKpiMetrics(entries),
+        campaignCount: entries.length,
+      }))
+      .map((item) => ({
+        ...item,
+        metrics: {
+          openRate: item.metrics.openRate,
+          clickRate: item.metrics.clickRate,
+          cvr: item.metrics.cvr,
+          revenuePerRecipient: item.metrics.revenuePerRecipient,
+          avgTimeToOpen: item.metrics.avgTimeToOpen,
+        },
+      }))
+      .sort((left, right) => right.metrics.openRate + right.metrics.clickRate - (left.metrics.openRate + left.metrics.clickRate));
+  }
+
+  private buildStrategyRecommendationSummaries(
+    rows: Array<{
+      recommendationId: string;
+      recommendationTitle: string;
+      openRate: number;
+      clickRate: number;
+      cvr: number;
+      revenuePerRecipient: number;
+      avgTimeToOpen: number;
+    }>,
+  ) {
+    const groups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = row.recommendationId;
+      const current = groups.get(key) ?? [];
+      current.push(row);
+      groups.set(key, current);
+    }
+
+    return Array.from(groups.entries())
+      .map(([recommendationId, entries]) => ({
+        recommendationId,
+        recommendationTitle: entries[0]?.recommendationTitle ?? "Niezmapowana rekomendacja",
+        metrics: this.aggregateStrategyKpiMetrics(entries),
+        campaignCount: entries.length,
+      }))
+      .map((item) => ({
+        ...item,
+        metrics: {
+          openRate: item.metrics.openRate,
+          clickRate: item.metrics.clickRate,
+          cvr: item.metrics.cvr,
+          revenuePerRecipient: item.metrics.revenuePerRecipient,
+          avgTimeToOpen: item.metrics.avgTimeToOpen,
+        },
+      }))
+      .sort((left, right) => right.metrics.clickRate + right.metrics.cvr - (left.metrics.clickRate + left.metrics.cvr));
   }
 
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {

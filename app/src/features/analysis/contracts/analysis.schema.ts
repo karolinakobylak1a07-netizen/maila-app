@@ -561,6 +561,53 @@ export const getCampaignEffectivenessAnalysisSchema = z.object({
   rangeStart: z.coerce.date(),
   rangeEnd: z.coerce.date(),
 });
+export const strategyKPIAnalysisStatusSchema = z.enum([
+  "ok",
+  "low_engagement",
+  "missing_data",
+]);
+export const strategyKPIMetricsSchema = z.object({
+  openRate: z.number().min(0),
+  clickRate: z.number().min(0),
+  cvr: z.number().min(0),
+  revenuePerRecipient: z.number().min(0),
+  avgTimeToOpen: z.number().min(0),
+});
+export const strategyKPISegmentSummarySchema = z.object({
+  segmentId: z.string().min(1),
+  segmentName: z.string().min(1),
+  metrics: strategyKPIMetricsSchema,
+  campaignCount: z.number().int().min(0),
+});
+export const strategyKPIRecommendationSummarySchema = z.object({
+  recommendationId: z.string().min(1),
+  recommendationTitle: z.string().min(1),
+  metrics: strategyKPIMetricsSchema,
+  campaignCount: z.number().int().min(0),
+});
+export const strategyKPITopPerformersSchema = z.object({
+  segmentId: z.string().min(1).nullable(),
+  recommendationId: z.string().min(1).nullable(),
+});
+export const strategyKPIAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  rangeStart: z.date(),
+  rangeEnd: z.date(),
+  status: strategyKPIAnalysisStatusSchema,
+  overall: strategyKPIMetricsSchema.extend({
+    campaignCount: z.number().int().min(0),
+  }),
+  segmentSummaries: z.array(strategyKPISegmentSummarySchema),
+  recommendationSummaries: z.array(strategyKPIRecommendationSummarySchema),
+  topPerformers: strategyKPITopPerformersSchema,
+});
+export const getStrategyKPIAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  rangeStart: z.coerce.date(),
+  rangeEnd: z.coerce.date(),
+});
 export const artifactFeedbackTargetTypeSchema = z.enum([
   "recommendation",
   "draft",
@@ -614,6 +661,7 @@ export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContext
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
 export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
 export type GetCampaignEffectivenessAnalysisSchema = z.infer<typeof getCampaignEffectivenessAnalysisSchema>;
+export type GetStrategyKPIAnalysisSchema = z.infer<typeof getStrategyKPIAnalysisSchema>;
 export type SubmitArtifactFeedbackSchema = z.infer<typeof submitArtifactFeedbackSchema>;
 
 export const syncNowSchema = z.object({
@@ -722,5 +770,7 @@ export type CommunicationImprovementRecommendationItem = z.infer<typeof communic
 export type CommunicationImprovementRecommendations = z.infer<typeof communicationImprovementRecommendationsSchema>;
 export type CampaignEffectivenessStatus = z.infer<typeof campaignEffectivenessStatusSchema>;
 export type CampaignEffectivenessAnalysis = z.infer<typeof campaignEffectivenessAnalysisSchema>;
+export type StrategyKPIAnalysisStatus = z.infer<typeof strategyKPIAnalysisStatusSchema>;
+export type StrategyKPIAnalysis = z.infer<typeof strategyKPIAnalysisSchema>;
 export type ArtifactFeedbackTargetType = z.infer<typeof artifactFeedbackTargetTypeSchema>;
 export type ArtifactFeedback = z.infer<typeof artifactFeedbackSchema>;

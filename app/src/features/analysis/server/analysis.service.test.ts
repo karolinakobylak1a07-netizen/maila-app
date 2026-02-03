@@ -3167,4 +3167,206 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.analysis.insights[0]).toContain("Brak pelnych danych KPI");
     });
   });
+
+  describe("strategy KPI analysis (Story 7.3)", () => {
+    it("returns aggregated KPI summary by segment and recommendation", async () => {
+      const now = new Date("2026-02-23T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "perf-campaign-1",
+          requestId: "perf-campaign-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: {
+            openRate: 62,
+            clickRate: 34,
+            conversions: 48,
+            revenue: 1200,
+            recipients: 300,
+            avgTimeToOpen: 35,
+            segmentId: "vip",
+            draftId: "strategy-kpi-analysis-1-pakiet-vip",
+          },
+        },
+        {
+          id: "perf-flow-1",
+          requestId: "perf-flow-1",
+          eventName: "flow.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: {
+            openRate: 58,
+            clickRate: 31,
+            conversions: 42,
+            revenue: 980,
+            recipients: 280,
+            avgTimeToOpen: 42,
+            segmentId: "vip",
+            draftId: "strategy-kpi-analysis-1-pakiet-vip",
+          },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([
+        {
+          id: "segment-1",
+          requestId: "segment-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            segments: [
+              {
+                name: "VIP",
+                entryCriteria: ["wydali 500+"],
+                objective: "retencja",
+                campaignUseCase: "kampanie VIP",
+                flowUseCase: "flow VIP",
+              },
+            ],
+            requestId: "segment-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.segment_proposal.generated",
+              type: "strategy",
+            },
+            missingData: [],
+          },
+        },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet vip"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-1",
+          requestId: "flow-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Flow pakiet vip welcome",
+                trigger: "signup",
+                objective: "activate",
+                priority: "HIGH",
+                businessReason: "coverage",
+              },
+            ],
+            requestId: "flow-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.flow_plan.generated",
+              type: "flow",
+            },
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-1",
+          requestId: "camp-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "PROMO",
+                goal: "promocja pakiet vip",
+                segment: "VIP",
+                title: "Kampania pakiet vip",
+              },
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter ogolny",
+                segment: "VIP",
+                title: "Newsletter ogolny",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "retencja",
+                segment: "VIP",
+                title: "Lifecycle retention",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "edukacja",
+                segment: "VIP",
+                title: "Edu camp",
+              },
+            ],
+            requestId: "camp-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            versionMeta: {
+              timestamp: now.toISOString(),
+              author: "u1",
+              source: "strategy.campaign_calendar.generated",
+              type: "plan",
+            },
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+
+      const result = await analysisService.getStrategyKPIAnalysis("u1", "OWNER", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.analysis.status).toBe("ok");
+      expect(result.data.analysis.overall.campaignCount).toBe(2);
+      expect(result.data.analysis.segmentSummaries.length).toBeGreaterThan(0);
+      expect(result.data.analysis.segmentSummaries[0]?.segmentName).toBe("VIP");
+      expect(result.data.analysis.recommendationSummaries.length).toBeGreaterThan(0);
+    });
+
+    it("returns missing_data when there are no performance logs in range", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue(null);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getStrategyKPIAnalysis("u1", "STRATEGY", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.analysis.status).toBe("missing_data");
+      expect(result.data.analysis.overall.campaignCount).toBe(0);
+      expect(result.data.analysis.topPerformers.segmentId).toBeNull();
+      expect(result.data.analysis.topPerformers.recommendationId).toBeNull();
+    });
+  });
 });

@@ -63,6 +63,9 @@ import {
   campaignEffectivenessStatusSchema,
   campaignEffectivenessAnalysisSchema,
   getCampaignEffectivenessAnalysisSchema,
+  strategyKPIAnalysisStatusSchema,
+  strategyKPIAnalysisSchema,
+  getStrategyKPIAnalysisSchema,
   artifactFeedbackTargetTypeSchema,
   artifactFeedbackSchema,
   submitArtifactFeedbackSchema,
@@ -927,6 +930,70 @@ describe('OptimizationArea Schema', () => {
           clientId: 'cm0000000000000000000000',
           rangeStart: '2026-02-01T00:00:00.000Z',
           rangeEnd: '2026-02-21T23:59:59.000Z',
+        }).success,
+      ).toBe(true);
+    });
+
+    it('should parse strategy KPI analysis payload and input', () => {
+      expect(strategyKPIAnalysisStatusSchema.safeParse('ok').success).toBe(true);
+      expect(strategyKPIAnalysisStatusSchema.safeParse('low_engagement').success).toBe(true);
+      expect(strategyKPIAnalysisStatusSchema.safeParse('missing_data').success).toBe(true);
+
+      const payloadResult = strategyKPIAnalysisSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'strategy-kpi-1',
+        generatedAt: new Date('2026-02-22T10:00:00.000Z'),
+        rangeStart: new Date('2026-02-01T00:00:00.000Z'),
+        rangeEnd: new Date('2026-02-22T23:59:59.000Z'),
+        status: 'ok',
+        overall: {
+          campaignCount: 5,
+          openRate: 52.3,
+          clickRate: 15.2,
+          cvr: 4.1,
+          revenuePerRecipient: 2.4,
+          avgTimeToOpen: 41,
+        },
+        segmentSummaries: [
+          {
+            segmentId: 'vip',
+            segmentName: 'VIP',
+            metrics: {
+              openRate: 58,
+              clickRate: 19,
+              cvr: 5.2,
+              revenuePerRecipient: 3.1,
+              avgTimeToOpen: 34,
+            },
+            campaignCount: 2,
+          },
+        ],
+        recommendationSummaries: [
+          {
+            recommendationId: 'rec-1',
+            recommendationTitle: 'Wzmocnij onboarding VIP',
+            metrics: {
+              openRate: 55,
+              clickRate: 16,
+              cvr: 4.5,
+              revenuePerRecipient: 2.8,
+              avgTimeToOpen: 38,
+            },
+            campaignCount: 2,
+          },
+        ],
+        topPerformers: {
+          segmentId: 'vip',
+          recommendationId: 'rec-1',
+        },
+      });
+      expect(payloadResult.success).toBe(true);
+
+      expect(
+        getStrategyKPIAnalysisSchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          rangeStart: '2026-02-01T00:00:00.000Z',
+          rangeEnd: '2026-02-22T23:59:59.000Z',
         }).success,
       ).toBe(true);
     });
