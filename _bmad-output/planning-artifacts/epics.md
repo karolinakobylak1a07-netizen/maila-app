@@ -500,6 +500,29 @@ So that komunikacja jest trafna i dopasowana do etapu klienta.
 **Then** kazdy segment zawiera kryteria wejscia i cel segmentu
 **And** segmenty mozna wykorzystac bezposrednio w planie kampanii i flow.
 
+### Story 3.5: Remediacja epiku 3
+
+As a Engineering Lead,
+I want naprawic krytyczne problemy wykryte w Deep Audicie Epiku 3,
+So that logika strategii i sync jest odporna na race condition, bledy RBAC i utrate danych.
+
+**Acceptance Criteria:**
+
+**Given** generowanie strategii dziala rownolegle
+**When** dwa zadania uruchamia sie dla tego samego klienta
+**Then** system serializuje wykonanie lockiem
+**And** reuse'uje resumable record bez duplikacji artefaktow.
+
+**Given** sync zapisuje inventory i status run
+**When** finalizacja sync sie powiedzie
+**Then** inventory i updateSyncRun sa zapisywane atomowo w jednej transakcji
+**And** brak czesciowych zapisow po bledzie.
+
+**Given** operacje audit sa wykonywane przez role rozne od OWNER/STRATEGY
+**When** brak uprawnien RBAC
+**Then** system nie bypassuje sprawdzen i zwraca forbidden
+**And** zapisuje probe jako zdarzenie audytowe.
+
 ## Epic 4: Content Briefing, Drafting & Personalization
 
 Content i Owner moga szybko przejsc od strategii do gotowych tresci i wariantow segmentowych, zachowujac spojny kontekst biznesowy.
@@ -579,6 +602,29 @@ So that tresc i komunikat sa dopasowane do konkretnej grupy odbiorcow.
 **Then** system tworzy warianty per segment z dopasowanym tematem, preheaderem, body i CTA
 **And** wynik jest zapisywany jako artefakt klienta.
 
+### Story 4.4: Remediacja epiku 4
+
+As a Engineering Team,
+I want usunac ryzyka wykryte przez Deep Audit Epiku 4,
+So that generowanie draftow i personalizacji jest odporne na race conditions i bledy AI.
+
+**Acceptance Criteria:**
+
+**Given** uruchamiane sa rownolegle sciezki `generateEmailDraft` i `generatePersonalizedEmailDraft`
+**When** operacje dotycza tego samego klienta i briefu
+**Then** system zabezpiecza je lockiem
+**And** nie duplikuje wersji artefaktow.
+
+**Given** AI zwraca nieprawidlowy payload lub timeout/error
+**When** system finalizuje draft
+**Then** zwraca kontrolowany blad domenowy
+**And** nie publikuje niepoprawnego artefaktu.
+
+**Given** audit log nie zapisuje sie poprawnie
+**When** finalizowana jest operacja content generation
+**Then** transakcja jest rollbackowana
+**And** stan artefaktow pozostaje spojny.
+
 ## Epic 5: Implementation Orchestration
 
 Operations moze wdrazac plan w kontrolowany sposob, z widocznoscia zaleznosci i automatyczna detekcja konfliktow.
@@ -620,7 +666,7 @@ So that ograniczam pomylki i pomijanie krokow.
 **Then** system zwraca blad transakcji
 **And** zachowuje poprzedni stan kroku bez niespojnosci dat wykonania.
 
-### Story 5.2: Mapa zaleznosci miedzy flow, segmentami i kampaniami
+### Story 5.2: Powiadomienia o blokadach i brakach konfiguracji
 
 As a Operations & Implementation Lead,
 I want widziec zaleznosci implementacyjne,
@@ -645,7 +691,7 @@ So that prawidlowo ustalam kolejnosc wdrozen.
 **Then** system ogranicza widocznosc zgodnie z RBAC
 **And** blokuje akcje edycyjne.
 
-### Story 5.3: Detekcja konfliktow wdrozeniowych
+### Story 5.3: Priorytetyzacja wdrozen i alerty postepow
 
 As a Operations & Implementation Lead,
 I want automatycznie wykrywac kolizje,
@@ -670,7 +716,7 @@ So that moge naprawic plan przed publikacja zmian.
 **Then** system zapisuje wynik czesciowy i status "timed_out"
 **And** umozliwia restart walidacji bez utraty danych planu.
 
-### Story 5.4: Eksport paczki materialow do wdrozenia w Klaviyo
+### Story 5.4: Generowanie raportu wdrozeniowego
 
 As a Operations & Implementation Lead,
 I want eksportowac komplet materialow wdrozeniowych,
@@ -699,7 +745,7 @@ Owner i strateg moga monitorowac wyniki, rozwijac optymalizacje oraz utrzymywac 
 **Then** operacja konczy sie statusem "export_failed"
 **And** uzytkownik otrzymuje mozliwosc ponowienia bez utraty konfiguracji eksportu.
 
-### Story 6.1: Raporty wynikow klienta
+### Story 6.1: Zbieranie kontekstu produktu na potrzeby audytu
 
 As a Owner,
 I want generowac raporty wynikow,
@@ -724,7 +770,7 @@ So that widze trend KPI i moge podejmowac decyzje o kolejnych krokach.
 **Then** system zwraca status "timed_out"
 **And** zapisuje postep czesciowy bez publikacji niepelnego raportu.
 
-### Story 6.2: Rekomendacje optymalizacyjne z priorytetem
+### Story 6.2: Analiza pokrycia produktu w flow i kampaniach
 
 As a Strategy & Insight Lead,
 I want otrzymac rekomendacje z uzasadnieniem,
@@ -749,7 +795,7 @@ So that planuje backlog optymalizacji wedlug realnego wplywu.
 **Then** system zapisuje status "failed_generation" z requestId
 **And** utrzymuje ostatni zatwierdzony zestaw rekomendacji.
 
-### Story 6.3: Planowanie testow A/B
+### Story 6.3: Rekomendacje usprawnien komunikacji produktowej
 
 As a Strategy & Insight Lead,
 I want otrzymac gotowe propozycje testow A/B,

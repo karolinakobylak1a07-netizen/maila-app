@@ -40,39 +40,39 @@ tracking_system: file-system
 story_location: {project-root}/_bmad-output/implementation-artifacts
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-setup-projektu-ze-starter-template-create-t3-app: done
   1-2-zarzadzanie-profilami-klientow-i-bezpieczne-przelaczanie-kontekstu: done
   1-3-historia-decyzji-strategicznych-per-klient: done
   1-4-discovery-onboarding-z-walidacja-brakow: done
   1-5-egzekwowanie-dostepu-per-rola-i-ograniczenia-edycji: done
   epic-1-retrospective: optional
-  epic-2: in-progress
+  epic-2: done
   2-1-sync-i-inwentaryzacja-danych-klaviyo: done
   2-2-raport-luk-konfiguracji: done
   2-3-wykrywanie-slabych-ogniw-i-priorytetyzacja-optymalizacji: done
   2-4-insighty-powiazane-z-kontekstem-klienta: done
   epic-2-retrospective: optional
-  epic-3: in-progress
+  epic-3: done
   3-1-generowanie-strategii-email-marketingu: done
   3-2-plan-flow-i-automatyzacji: done
   3-3-kalendarz-kampanii-oparty-o-cele-i-sezonowosc: done
   3-4-propozycja-segmentacji-odbiorcow: done
   3-5-remediacja-epiku-3: done
   epic-3-retrospective: optional
-  epic-4: in-progress
+  epic-4: done
   4-1-generowanie-briefu-komunikacyjnego: done
   4-2-generowanie-draftow-maili-z-briefu: done
   4-3-personalizacja-draftow-na-bazie-segmentow: done
   4-4-remediacja-epiku-4: done
   epic-4-retrospective: optional
-  epic-5: in-progress
+  epic-5: done
   5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: done
   5-2-powiadomienia-o-blokadach-i-brakach-konfiguracji: done
   5-3-priorytetyzacja-wdrozen-i-alerty-postepow: done
   5-4-generowanie-raportu-wdrozeniowego: done
   epic-5-retrospective: optional
-  epic-6: in-progress
+  epic-6: done
   6-1-zbieranie-kontekstu-produktu-na-potrzeby-audytu: done
   6-2-analiza-pokrycia-produktu-w-flow-i-kampaniach: done
   6-3-rekomendacje-usprawnien-komunikacji-produktowej: done
