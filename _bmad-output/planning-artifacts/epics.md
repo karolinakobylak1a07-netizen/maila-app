@@ -959,3 +959,21 @@ So that moge szybciej wykryc co dziala i co wymaga poprawy.
 **When** analiza nie ma KPI lub feedbacku w zakresie
 **Then** status jest `insufficient_data`
 **And** wynik zawiera wskazowki co uzupelnic.
+
+### Story 7.3: Analiza KPI strategii komunikacji
+
+As a Owner/Strategy user,
+I want widziec KPI strategii komunikacji per segment i rekomendacja,
+So that moge ocenic skutecznosc strategii i szybciej wykryc obszary o niskim zaangazowaniu.
+
+**Acceptance Criteria:**
+
+**Given** dostepne sa eventy `campaign.performance.reported` i `flow.performance.reported`
+**When** wywoluje `getStrategyKPIAnalysis` dla zakresu dat
+**Then** system agreguje openRate, clickRate, CVR, revenuePerRecipient, avgTimeToOpen
+**And** mapuje wyniki do segmentow i rekomendacji strategii.
+
+**Given** wyniki KPI sa dostepne
+**When** generowana jest analiza
+**Then** zwracane jest podsumowanie per segment i per strategy recommendation
+**And** top performers oraz status `ok` / `low_engagement` / `missing_data`.
