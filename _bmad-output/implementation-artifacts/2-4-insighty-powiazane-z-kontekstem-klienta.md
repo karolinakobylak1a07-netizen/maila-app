@@ -54,6 +54,28 @@ so that rekomendacje nie sa generyczne i daja sie od razu wdrozyc.
 - Granice: logika i kontrakty w `features/analysis/*`; UI tylko konsumuje gotowe dane.
 - Dla diagnostyki utrzymac `requestId` i `lastSyncRequestId` w odpowiedzi i bledach.
 
+### Business Rules Clarification (AC Notes)
+
+- **Minimalny kontekst klienta (AC2 / `draft_low_confidence`)**
+  - Minimalne wymagania do statusu `ok`: `linkedClientGoals` (min. 1) oraz `linkedClientPriorities` (min. 1).
+  - Pola opcjonalne (np. primary KPI, ton komunikacji, polityka promek) moga byc wykorzystane do lepszej jakosci insightu, ale nie blokuja statusu `ok`.
+  - Jezeli brakuje ktoregokolwiek z dwoch wymaganych pol, insight dostaje status `draft_low_confidence` i uzupelnia `missingContext[]` o konkretne brakujace pola.
+
+- **Definicja konfliktu zrodel (AC3 / `source_conflict`)**
+  - Konflikt wykrywamy dla tego samego pola/kategorii w oknie `ostatnie 30 dni` (albo od `lastSync` gdy zakres jest krotszy).
+  - Warunek konfliktu: roznica miedzy dwoma zrodlami przekracza `> 20%` wzglednie lub prog absolutny dla malych metryk.
+  - `conflictDetails` musi zawierac: `fields[]`, `sourceA`, `sourceB`, `reason` (z liczbowym uzasadnieniem typu `delta > threshold`).
+  - Hierarchia zrodel przy interpretacji: `sync inventory` > `cached insights` > `UI-input`.
+
+- **Precedence statusow (gdy wystepuje kilka problemow)**
+  - `source_conflict` ma pierwszenstwo przed `draft_low_confidence`.
+  - Gdy oba warunki wystapia jednoczesnie, finalny status to `source_conflict`, ale `missingContext[]` nadal zwracamy diagnostycznie.
+
+- **Actionability policy (`recommendedAction` / `actionability`)**
+  - `status=ok`: `recommendedAction` jest wymagane i konkretne; `actionability="actionable"`.
+  - `status=draft_low_confidence`: `recommendedAction` moze byc propozycja warunkowa; `actionability="needs_human_validation"` + wskazanie brakow kontekstu.
+  - `status=source_conflict`: `recommendedAction=null`; `actionability="needs_human_validation"` + instrukcja walidacji w `rationale` lub `conflictDetails`.
+
 ### Project Structure Notes
 
 - Preferowane miejsca zmian:
