@@ -2,6 +2,8 @@ import { AnalysisRepository } from "./analysis.repository";
 import { db } from "~/server/db";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
+  CampaignCalendar,
+  CampaignCalendarItem,
   EmailStrategy,
   FlowPlan,
   FlowPlanItem,
@@ -158,6 +160,34 @@ export interface GenerateFlowPlanOutput {
 export interface GetLatestFlowPlanOutput {
   data: {
     flowPlan: FlowPlan | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateCampaignCalendarInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestCampaignCalendarInput {
+  clientId: string;
+}
+
+export interface GenerateCampaignCalendarOutput {
+  data: {
+    calendar: CampaignCalendar;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestCampaignCalendarOutput {
+  data: {
+    calendar: CampaignCalendar | null;
   };
   meta: {
     requestId: string;
@@ -642,6 +672,78 @@ export class AnalysisService {
     };
   }
 
+  async generateCampaignCalendar(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GenerateCampaignCalendarInput,
+  ): Promise<GenerateCampaignCalendarOutput> {
+    const requestId = input.requestId ?? `campaign-calendar-generate-${Date.now()}`;
+    await this.validateEditAccess(userId, role, input.clientId);
+
+    const strategyRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
+    const latestStrategy = this.parseLatestEmailStrategy(strategyRecords);
+    if (!latestStrategy || latestStrategy.status !== "ok") {
+      throw new AnalysisDomainError(
+        "validation",
+        "CAMPAIGN_CALENDAR_REQUIRES_APPROVED_STRATEGY",
+        { requiredStep: "generate_and_approve_strategy" },
+        requestId,
+      );
+    }
+
+    const discovery = await this.repository.findDiscoveryAnswers(input.clientId);
+    const hasSeasonality = Boolean(discovery?.seasonality && discovery.seasonality.trim().length > 0);
+    const existingCalendars = await this.repository.listLatestCampaignCalendarAudit(input.clientId, 20);
+    const latestCalendar = this.parseLatestCampaignCalendar(existingCalendars);
+    const nextVersion = (latestCalendar?.version ?? 0) + 1;
+
+    const items = this.buildCampaignCalendarItems({
+      strategy: latestStrategy,
+      hasSeasonality,
+    });
+    const calendar = this.buildCampaignCalendarRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: hasSeasonality ? "ok" : "seasonality_missing",
+      items,
+      requestId,
+      strategyRequestId: latestStrategy.requestId,
+      requiresManualValidation: !hasSeasonality,
+    });
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "strategy.campaign_calendar.generated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: calendar,
+    });
+
+    return {
+      data: { calendar },
+      meta: {
+        generatedAt: calendar.generatedAt,
+        requestId,
+      },
+    };
+  }
+
+  async getLatestCampaignCalendar(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetLatestCampaignCalendarInput,
+  ): Promise<GetLatestCampaignCalendarOutput> {
+    const requestId = `campaign-calendar-latest-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestCampaignCalendarAudit(input.clientId, 20);
+    const calendar = this.parseLatestCampaignCalendar(records) ?? null;
+    return {
+      data: { calendar },
+      meta: { requestId },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -659,6 +761,29 @@ export class AnalysisService {
       throw new AnalysisDomainError(
         "forbidden",
         "rbac_module_view_forbidden",
+        { module: "AUDIT", role },
+        "unknown",
+      );
+    }
+  }
+
+  private async validateEditAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
+    const membership = await this.repository.findMembership(userId, clientId);
+    if (!membership) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "user_not_member_of_client" },
+        "unknown",
+      );
+    }
+
+    const policies = await this.repository.listRbacPoliciesByRole(role);
+    const auditPolicy = policies.find((p) => p.module === "AUDIT");
+    if (!auditPolicy || !auditPolicy.canEdit) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "rbac_module_edit_forbidden",
         { module: "AUDIT", role },
         "unknown",
       );
@@ -1133,6 +1258,121 @@ export class AnalysisService {
   private parseLatestFlowPlan(records: Array<{ details: unknown }>): FlowPlan | null {
     for (const record of records) {
       const parsed = this.parseFlowPlan(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildCampaignCalendarItems(payload: {
+    strategy: EmailStrategy;
+    hasSeasonality: boolean;
+  }): CampaignCalendarItem[] {
+    const baseGoal = payload.strategy.goals[0] ?? "Wzrost konwersji";
+    const baseSegment = payload.strategy.segments[0] ?? "Primary segment";
+    const cadence: CampaignCalendarItem["campaignType"][] = payload.hasSeasonality
+      ? ["NEWSLETTER", "PROMO", "LIFECYCLE", "EDUCATIONAL"]
+      : ["NEWSLETTER", "LIFECYCLE", "PROMO", "NEWSLETTER"];
+
+    return cadence.map((campaignType, index) => ({
+      weekNumber: index + 1,
+      campaignType,
+      goal: baseGoal,
+      segment: baseSegment,
+      title: `Tydzien ${index + 1}: ${campaignType.toLowerCase()} dla ${baseSegment}`,
+    }));
+  }
+
+  private buildCampaignCalendarRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "seasonality_missing";
+    items: CampaignCalendarItem[];
+    requestId: string;
+    strategyRequestId: string;
+    requiresManualValidation: boolean;
+  }): CampaignCalendar {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      items: payload.items,
+      requestId: payload.requestId,
+      strategyRequestId: payload.strategyRequestId,
+      generatedAt: new Date(),
+      requiresManualValidation: payload.requiresManualValidation,
+    };
+  }
+
+  private parseCampaignCalendar(details: unknown): CampaignCalendar | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<CampaignCalendar>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      !Array.isArray(value.items) ||
+      typeof value.requestId !== "string" ||
+      typeof value.strategyRequestId !== "string" ||
+      typeof value.requiresManualValidation !== "boolean"
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "seasonality_missing"] as const;
+    const isCalendarStatus = (item: unknown): item is CampaignCalendar["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isCalendarStatus(value.status)) {
+      return null;
+    }
+
+    const allowedTypes = ["NEWSLETTER", "PROMO", "LIFECYCLE", "EDUCATIONAL"] as const;
+    const items = value.items
+      .filter(
+        (item): item is CampaignCalendarItem =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).weekNumber === "number" &&
+          typeof (item as Record<string, unknown>).campaignType === "string" &&
+          typeof (item as Record<string, unknown>).goal === "string" &&
+          typeof (item as Record<string, unknown>).segment === "string" &&
+          typeof (item as Record<string, unknown>).title === "string" &&
+          (allowedTypes as readonly string[]).includes((item as Record<string, unknown>).campaignType as string),
+      )
+      .map((item) => ({
+        weekNumber: item.weekNumber,
+        campaignType: item.campaignType,
+        goal: item.goal,
+        segment: item.segment,
+        title: item.title,
+      }));
+
+    if (items.length < 4) {
+      return null;
+    }
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      items,
+      requestId: value.requestId,
+      strategyRequestId: value.strategyRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      requiresManualValidation: value.requiresManualValidation,
+    };
+  }
+
+  private parseLatestCampaignCalendar(records: Array<{ details: unknown }>): CampaignCalendar | null {
+    for (const record of records) {
+      const parsed = this.parseCampaignCalendar(record.details);
       if (parsed) {
         return parsed;
       }

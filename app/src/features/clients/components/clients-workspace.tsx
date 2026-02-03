@@ -30,6 +30,7 @@ import { GapListCard } from "~/features/analysis/components/gap-list";
 import { OptimizationPrioritiesList } from "~/features/analysis/components/optimization-priorities-list";
 import { ContextInsightsList } from "~/features/analysis/components/context-insights-list";
 import { FlowPlanCard } from "~/features/analysis/components/flow-plan-card";
+import { CampaignCalendarCard } from "~/features/analysis/components/campaign-calendar-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -86,6 +87,8 @@ export function ClientsWorkspace() {
   const [contextInsightsLoading, setContextInsightsLoading] = useState(false);
   const [flowPlanError, setFlowPlanError] = useState<string | null>(null);
   const [flowPlanLoading, setFlowPlanLoading] = useState(false);
+  const [campaignCalendarError, setCampaignCalendarError] = useState<string | null>(null);
+  const [campaignCalendarLoading, setCampaignCalendarLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -172,6 +175,16 @@ export function ClientsWorkspace() {
     },
   );
   const generateFlowPlanMutation = api.analysis.generateFlowPlan.useMutation();
+  const latestCampaignCalendarQuery = api.analysis.getLatestCampaignCalendar.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateCampaignCalendarMutation = api.analysis.generateCampaignCalendar.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -237,6 +250,7 @@ export function ClientsWorkspace() {
       utils.analysis.getOptimizationAreas.invalidate(),
       utils.analysis.getContextInsights.invalidate(),
       utils.analysis.getLatestFlowPlan.invalidate(),
+      utils.analysis.getLatestCampaignCalendar.invalidate(),
     ]);
   };
 
@@ -614,6 +628,30 @@ export function ClientsWorkspace() {
     setFlowPlanError(null);
   }, [latestFlowPlanQuery.isLoading, latestFlowPlanQuery.isError, latestFlowPlanQuery.error]);
 
+  useEffect(() => {
+    if (latestCampaignCalendarQuery.isLoading) {
+      setCampaignCalendarLoading(true);
+      setCampaignCalendarError(null);
+      return;
+    }
+
+    if (latestCampaignCalendarQuery.isError) {
+      setCampaignCalendarLoading(false);
+      const requestId = extractRequestId(latestCampaignCalendarQuery.error);
+      setCampaignCalendarError(
+        withRequestId("Nie udalo sie pobrac kalendarza kampanii.", requestId),
+      );
+      return;
+    }
+
+    setCampaignCalendarLoading(false);
+    setCampaignCalendarError(null);
+  }, [
+    latestCampaignCalendarQuery.isLoading,
+    latestCampaignCalendarQuery.isError,
+    latestCampaignCalendarQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -626,6 +664,25 @@ export function ClientsWorkspace() {
     } catch (error) {
       setFlowPlanError(
         withRequestId("Nie udalo sie wygenerowac planu flow.", extractRequestId(error)),
+      );
+    }
+  };
+
+  const generateCampaignCalendar = async () => {
+    if (!activeClientId) {
+      setCampaignCalendarError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateCampaignCalendarMutation.mutateAsync({ clientId: activeClientId });
+      await refresh();
+    } catch (error) {
+      setCampaignCalendarError(
+        withRequestId(
+          "Nie udalo sie wygenerowac kalendarza kampanii.",
+          extractRequestId(error),
+        ),
       );
     }
   };
@@ -735,6 +792,19 @@ export function ClientsWorkspace() {
             }
             flowPlan={latestFlowPlanQuery.data?.data.flowPlan ?? null}
             onGenerate={generateFlowPlan}
+          />
+        </div>
+        <div className="mt-4">
+          <CampaignCalendarCard
+            loading={campaignCalendarLoading}
+            generating={generateCampaignCalendarMutation.isPending}
+            error={campaignCalendarError}
+            requestId={
+              latestCampaignCalendarQuery.data?.meta.requestId ??
+              extractRequestId(latestCampaignCalendarQuery.error)
+            }
+            calendar={latestCampaignCalendarQuery.data?.data.calendar ?? null}
+            onGenerate={generateCampaignCalendar}
           />
         </div>
         </div>

@@ -10,6 +10,8 @@ import {
   getLatestEmailStrategySchema,
   generateFlowPlanSchema,
   getLatestFlowPlanSchema,
+  generateCampaignCalendarSchema,
+  getLatestCampaignCalendarSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -25,6 +27,8 @@ type AnalysisServiceContract = Pick<
   | "getLatestEmailStrategy"
   | "generateFlowPlan"
   | "getLatestFlowPlan"
+  | "generateCampaignCalendar"
+  | "getLatestCampaignCalendar"
 >;
 
 export const createAnalysisRouter = (
@@ -158,6 +162,34 @@ export const createAnalysisRouter = (
       .query(async ({ ctx, input }) => {
         try {
           return await analysisService.getLatestFlowPlan(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generateCampaignCalendar: protectedProcedure
+      .input(generateCampaignCalendarSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generateCampaignCalendar(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestCampaignCalendar: protectedProcedure
+      .input(getLatestCampaignCalendarSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestCampaignCalendar(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
             input,

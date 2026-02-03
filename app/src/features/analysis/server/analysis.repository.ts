@@ -46,6 +46,7 @@ export type StrategicPriorityRecord = {
 export type DiscoveryAnswersRecord = {
   goals: string[];
   segments: string[];
+  seasonality: string | null;
   brandTone: string | null;
   primaryKpis: string[];
 };
@@ -236,7 +237,7 @@ export class AnalysisRepository {
         answers: {
           where: {
             questionKey: {
-              in: ["goals", "segments", "brandTone", "primaryKpis"],
+              in: ["goals", "segments", "seasonality", "brandTone", "primaryKpis"],
             },
           },
           select: {
@@ -262,6 +263,7 @@ export class AnalysisRepository {
     return {
       goals: toList(resolve("goals")),
       segments: toList(resolve("segments")),
+      seasonality: resolve("seasonality").trim() || null,
       brandTone: resolve("brandTone").trim() || null,
       primaryKpis: toList(resolve("primaryKpis")),
     };
@@ -289,6 +291,24 @@ export class AnalysisRepository {
     return this.database.auditLog.findMany({
       where: {
         eventName: "strategy.flow_plan.generated",
+        entityType: "CLIENT",
+        entityId: clientId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
+        details: true,
+      },
+    });
+  }
+
+  listLatestCampaignCalendarAudit(clientId: string, limit = 10): Promise<StrategyAuditRecord[]> {
+    return this.database.auditLog.findMany({
+      where: {
+        eventName: "strategy.campaign_calendar.generated",
         entityType: "CLIENT",
         entityId: clientId,
       },

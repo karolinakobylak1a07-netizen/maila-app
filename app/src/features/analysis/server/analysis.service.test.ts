@@ -24,6 +24,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       findDiscoveryAnswers: vi.fn(),
       listLatestEmailStrategyAudit: vi.fn(),
       listLatestFlowPlanAudit: vi.fn(),
+      listLatestCampaignCalendarAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -672,6 +673,126 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.flowPlan.status).toBe("failed_persist");
       expect(result.data.flowPlan.items).toHaveLength(0);
       expect(result.data.flowPlan.requiredStep).toBe("retry_generate_flow_plan");
+    });
+  });
+
+  describe("generateCampaignCalendar (Story 3.3)", () => {
+    it("returns minimum 4-week calendar when strategy and seasonality are available (AC1)", async () => {
+      const now = new Date("2026-02-05T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        seasonality: "Q4 peak",
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateCampaignCalendar("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "calendar-1",
+      });
+
+      expect(result.data.calendar.status).toBe("ok");
+      expect(result.data.calendar.items.length).toBeGreaterThanOrEqual(4);
+      expect(result.data.calendar.items.every((item) => item.goal.length > 0)).toBe(true);
+      expect(result.data.calendar.items.every((item) => item.segment.length > 0)).toBe(true);
+    });
+
+    it("returns seasonality_missing when seasonality context is unavailable (AC2)", async () => {
+      const now = new Date("2026-02-05T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-2",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        seasonality: null,
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateCampaignCalendar("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "calendar-2",
+      });
+
+      expect(result.data.calendar.status).toBe("seasonality_missing");
+      expect(result.data.calendar.requiresManualValidation).toBe(true);
+      expect(result.data.calendar.items.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it("throws forbidden when user has no edit rights for calendar save (AC3)", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        seasonality: "Q4 peak",
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+
+      await expect(
+        analysisService.generateCampaignCalendar("u1", "OWNER", {
+          clientId: "client-1",
+          requestId: "calendar-3",
+        }),
+      ).rejects.toThrow(AnalysisDomainError);
     });
   });
 });

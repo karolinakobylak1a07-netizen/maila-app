@@ -15,6 +15,9 @@ import {
   flowPlanSchema,
   flowPlanStatusSchema,
   generateFlowPlanSchema,
+  campaignCalendarSchema,
+  campaignCalendarStatusSchema,
+  generateCampaignCalendarSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -377,6 +380,33 @@ describe('OptimizationArea Schema', () => {
     it('should validate generateFlowPlan input', () => {
       expect(generateFlowPlanSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(generateFlowPlanSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse campaign calendar statuses and payload', () => {
+      expect(campaignCalendarStatusSchema.safeParse('ok').success).toBe(true);
+      expect(campaignCalendarStatusSchema.safeParse('seasonality_missing').success).toBe(true);
+
+      const result = campaignCalendarSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        items: [
+          { weekNumber: 1, campaignType: 'NEWSLETTER', goal: 'Wzrost', segment: 'VIP', title: 'W1' },
+          { weekNumber: 2, campaignType: 'PROMO', goal: 'Wzrost', segment: 'VIP', title: 'W2' },
+          { weekNumber: 3, campaignType: 'LIFECYCLE', goal: 'Wzrost', segment: 'VIP', title: 'W3' },
+          { weekNumber: 4, campaignType: 'EDUCATIONAL', goal: 'Wzrost', segment: 'VIP', title: 'W4' },
+        ],
+        requestId: 'req-calendar',
+        strategyRequestId: 'req-strategy',
+        generatedAt: new Date('2026-02-05T12:00:00.000Z'),
+        requiresManualValidation: false,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateCampaignCalendar input', () => {
+      expect(generateCampaignCalendarSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(generateCampaignCalendarSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });
