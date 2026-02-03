@@ -59,8 +59,8 @@ development_status:
   3-3-kalendarz-kampanii-oparty-o-cele-i-sezonowosc: done
   3-4-propozycja-segmentacji-odbiorcow: done
   epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-generowanie-briefu-komunikacyjnego: backlog
+  epic-4: in-progress
+  4-1-generowanie-briefu-komunikacyjnego: done
   4-2-generowanie-draftow-maili-z-briefu: backlog
   4-3-workflow-zatwierdzania-i-odrzucania-tresci: backlog
   epic-4-retrospective: optional
