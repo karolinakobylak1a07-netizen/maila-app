@@ -23,6 +23,8 @@ import type {
   OptimizationStatus,
   ProductCoverageAnalysis,
   ProductCoverageItem,
+  CommunicationImprovementRecommendations,
+  CommunicationImprovementRecommendationItem,
   SegmentProposal,
   SegmentProposalItem,
   PriorityLevel,
@@ -429,6 +431,19 @@ export interface GetProductCoverageAnalysisInput {
 export interface GetProductCoverageAnalysisOutput {
   data: {
     coverage: ProductCoverageAnalysis;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GetCommunicationImprovementRecommendationsInput {
+  clientId: string;
+}
+
+export interface GetCommunicationImprovementRecommendationsOutput {
+  data: {
+    recommendations: CommunicationImprovementRecommendations;
   };
   meta: {
     requestId: string;
@@ -2026,6 +2041,66 @@ export class AnalysisService {
     };
   }
 
+  async getCommunicationImprovementRecommendations(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetCommunicationImprovementRecommendationsInput,
+  ): Promise<GetCommunicationImprovementRecommendationsOutput> {
+    const requestId = `communication-improvement-recommendations-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const [contextRecord, flowPlanRecords, campaignRecords] = await Promise.all([
+      this.repository.findAuditProductContext(input.clientId),
+      this.repository.listLatestFlowPlanAudit(input.clientId, 20),
+      this.repository.listLatestCampaignCalendarAudit(input.clientId, 20),
+    ]);
+
+    const flowPlan = this.parseLatestFlowPlan(flowPlanRecords ?? []);
+    const campaignCalendar = this.parseLatestCampaignCalendar(campaignRecords ?? []);
+
+    if (!contextRecord || contextRecord.mainProducts.length === 0) {
+      return {
+        data: {
+          recommendations: {
+            clientId: input.clientId,
+            status: "missing_context",
+            requestId,
+            generatedAt: new Date(),
+            items: [],
+          },
+        },
+        meta: { requestId },
+      };
+    }
+
+    const items = contextRecord.mainProducts
+      .map((productName) => {
+        const coverage = this.buildProductCoverageItem(productName, flowPlan, campaignCalendar);
+        return this.buildCommunicationImprovementRecommendationItem(coverage, requestId);
+      })
+      .sort((left, right) => {
+        const priorityDelta =
+          this.priorityWeight(right.priority) - this.priorityWeight(left.priority);
+        if (priorityDelta !== 0) {
+          return priorityDelta;
+        }
+        return right.impactScore - left.impactScore;
+      });
+
+    return {
+      data: {
+        recommendations: {
+          clientId: input.clientId,
+          status: "ok",
+          requestId,
+          generatedAt: new Date(),
+          items,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -3454,6 +3529,64 @@ export class AnalysisService {
       campaignMatches,
       coverageScore,
       status,
+    };
+  }
+
+  private buildCommunicationImprovementRecommendationItem(
+    coverage: ProductCoverageItem,
+    requestId: string,
+  ): CommunicationImprovementRecommendationItem {
+    const missingFlow = coverage.flowMatches.length === 0;
+    const missingCampaign = coverage.campaignMatches.length === 0;
+
+    if (coverage.status === "missing") {
+      return {
+        id: `${requestId}-${this.slugify(coverage.productName)}`,
+        productName: coverage.productName,
+        title: `Brak komunikacji dla ${coverage.productName}`,
+        description: "Produkt nie ma pokrycia ani w flow, ani w kampaniach.",
+        priority: "CRITICAL",
+        impactScore: 95,
+        status: coverage.status,
+        action: "Dodaj flow lifecycle i minimum 1 kampanie dla produktu.",
+      };
+    }
+
+    if (missingFlow) {
+      return {
+        id: `${requestId}-${this.slugify(coverage.productName)}`,
+        productName: coverage.productName,
+        title: `Uzupelnij flow dla ${coverage.productName}`,
+        description: "Produkt ma komunikacje kampanijna, ale brak automatyzacji flow.",
+        priority: "HIGH",
+        impactScore: 84,
+        status: coverage.status,
+        action: "Dodaj flow onboarding lub post-purchase dla produktu.",
+      };
+    }
+
+    if (missingCampaign) {
+      return {
+        id: `${requestId}-${this.slugify(coverage.productName)}`,
+        productName: coverage.productName,
+        title: `Uzupelnij kampanie dla ${coverage.productName}`,
+        description: "Produkt ma flow, ale nie jest wspierany regularna kampania.",
+        priority: "HIGH",
+        impactScore: 78,
+        status: coverage.status,
+        action: "Dodaj kampanie edukacyjna lub promocyjna dla produktu.",
+      };
+    }
+
+    return {
+      id: `${requestId}-${this.slugify(coverage.productName)}`,
+      productName: coverage.productName,
+      title: `Wzmocnij performance dla ${coverage.productName}`,
+      description: "Produkt ma pelne pokrycie i jest gotowy do optymalizacji.",
+      priority: "MEDIUM",
+      impactScore: 55,
+      status: coverage.status,
+      action: "Przetestuj warianty tresci i segmentacji w aktualnych flow/kampaniach.",
     };
   }
 

@@ -39,6 +39,7 @@ import { ImplementationChecklistCard } from "~/features/analysis/components/impl
 import { ImplementationAlertsCard } from "~/features/analysis/components/implementation-alerts-card";
 import { AuditProductContextCard } from "~/features/analysis/components/audit-product-context-card";
 import { ProductCoverageAnalysisCard } from "~/features/analysis/components/product-coverage-analysis-card";
+import { CommunicationImprovementRecommendationsCard } from "~/features/analysis/components/communication-improvement-recommendations-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -119,6 +120,9 @@ export function ClientsWorkspace() {
   const [productCoverageError, setProductCoverageError] = useState<string | null>(null);
   const [productCoverageLoading, setProductCoverageLoading] = useState(false);
   const [productCoverageRefreshing, setProductCoverageRefreshing] = useState(false);
+  const [communicationRecommendationsError, setCommunicationRecommendationsError] = useState<string | null>(null);
+  const [communicationRecommendationsLoading, setCommunicationRecommendationsLoading] = useState(false);
+  const [communicationRecommendationsRefreshing, setCommunicationRecommendationsRefreshing] = useState(false);
 
   const utils = api.useUtils();
 
@@ -300,6 +304,15 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const communicationRecommendationsQuery = api.analysis.getCommunicationImprovementRecommendations.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
@@ -377,6 +390,7 @@ export function ClientsWorkspace() {
       utils.analysis.getImplementationReport.invalidate(),
       utils.analysis.getAuditProductContext.invalidate(),
       utils.analysis.getProductCoverageAnalysis.invalidate(),
+      utils.analysis.getCommunicationImprovementRecommendations.invalidate(),
     ]);
   };
 
@@ -964,6 +978,30 @@ export function ClientsWorkspace() {
     productCoverageQuery.error,
   ]);
 
+  useEffect(() => {
+    if (communicationRecommendationsQuery.isLoading) {
+      setCommunicationRecommendationsLoading(true);
+      setCommunicationRecommendationsError(null);
+      return;
+    }
+
+    if (communicationRecommendationsQuery.isError) {
+      setCommunicationRecommendationsLoading(false);
+      const requestId = extractRequestId(communicationRecommendationsQuery.error);
+      setCommunicationRecommendationsError(
+        withRequestId("Nie udalo sie pobrac rekomendacji komunikacyjnych.", requestId),
+      );
+      return;
+    }
+
+    setCommunicationRecommendationsLoading(false);
+    setCommunicationRecommendationsError(null);
+  }, [
+    communicationRecommendationsQuery.isLoading,
+    communicationRecommendationsQuery.isError,
+    communicationRecommendationsQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1167,6 +1205,25 @@ export function ClientsWorkspace() {
       );
     } finally {
       setProductCoverageRefreshing(false);
+    }
+  };
+
+  const refreshCommunicationRecommendations = async () => {
+    if (!activeClientId) {
+      setCommunicationRecommendationsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setCommunicationRecommendationsRefreshing(true);
+    try {
+      await communicationRecommendationsQuery.refetch();
+      setCommunicationRecommendationsError(null);
+    } catch (error) {
+      setCommunicationRecommendationsError(
+        withRequestId("Nie udalo sie odswiezyc rekomendacji.", extractRequestId(error)),
+      );
+    } finally {
+      setCommunicationRecommendationsRefreshing(false);
     }
   };
 
@@ -1449,6 +1506,19 @@ export function ClientsWorkspace() {
             }
             coverage={productCoverageQuery.data?.data.coverage ?? null}
             onRefresh={refreshProductCoverage}
+          />
+        </div>
+        <div className="mt-4">
+          <CommunicationImprovementRecommendationsCard
+            loading={communicationRecommendationsLoading}
+            refreshing={communicationRecommendationsRefreshing}
+            error={communicationRecommendationsError}
+            requestId={
+              communicationRecommendationsQuery.data?.meta.requestId ??
+              extractRequestId(communicationRecommendationsQuery.error)
+            }
+            recommendations={communicationRecommendationsQuery.data?.data.recommendations ?? null}
+            onRefresh={refreshCommunicationRecommendations}
           />
         </div>
         </div>

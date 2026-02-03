@@ -49,6 +49,10 @@ import {
   productCoverageAnalysisStatusSchema,
   productCoverageAnalysisSchema,
   getProductCoverageAnalysisSchema,
+  communicationImprovementRecommendationStatusSchema,
+  communicationImprovementRecommendationItemSchema,
+  communicationImprovementRecommendationsSchema,
+  getCommunicationImprovementRecommendationsSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -720,6 +724,48 @@ describe('OptimizationArea Schema', () => {
     it('should validate getProductCoverageAnalysis input', () => {
       expect(getProductCoverageAnalysisSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(getProductCoverageAnalysisSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse communication improvement recommendations payload', () => {
+      expect(communicationImprovementRecommendationStatusSchema.safeParse('ok').success).toBe(true);
+      expect(communicationImprovementRecommendationStatusSchema.safeParse('missing_context').success).toBe(true);
+
+      const item = communicationImprovementRecommendationItemSchema.safeParse({
+        id: 'recommendation-1',
+        productName: 'Pakiet Pro',
+        title: 'Uzupelnij flow lifecycle',
+        description: 'Produkt ma braki pokrycia w flow i kampaniach.',
+        priority: 'CRITICAL',
+        impactScore: 95,
+        status: 'missing',
+        action: 'Dodaj flow welcome i kampanie edukacyjna.',
+      });
+      expect(item.success).toBe(true);
+
+      const result = communicationImprovementRecommendationsSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        status: 'ok',
+        requestId: 'req-recommendations',
+        generatedAt: new Date('2026-02-16T13:00:00.000Z'),
+        items: [
+          {
+            id: 'recommendation-1',
+            productName: 'Pakiet Pro',
+            title: 'Uzupelnij flow lifecycle',
+            description: 'Produkt ma braki pokrycia w flow i kampaniach.',
+            priority: 'CRITICAL',
+            impactScore: 95,
+            status: 'missing',
+            action: 'Dodaj flow welcome i kampanie edukacyjna.',
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getCommunicationImprovementRecommendations input', () => {
+      expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
+      expect(getCommunicationImprovementRecommendationsSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

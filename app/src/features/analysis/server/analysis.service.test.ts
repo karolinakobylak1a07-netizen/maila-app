@@ -1853,6 +1853,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
                 segment: "VIP",
                 title: "Start Q1",
               },
+              {
+                weekNumber: 2,
+                campaignType: "PROMO",
+                goal: "Konwersja",
+                segment: "VIP",
+                title: "Promo Q1",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "Retencja",
+                segment: "VIP",
+                title: "Lifecycle Q1",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "Edukacja",
+                segment: "VIP",
+                title: "Edu Q1",
+              },
             ],
             requestId: "calendar-1",
             strategyRequestId: "strategy-1",
@@ -2306,6 +2327,27 @@ describe("AnalysisService.getOptimizationAreas", () => {
                 segment: "VIP",
                 title: "Kampania pakiet pro",
               },
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter ogolny",
+                segment: "VIP",
+                title: "Newsletter ogolny",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "retencja",
+                segment: "VIP",
+                title: "Lifecycle retention",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "edukacja",
+                segment: "VIP",
+                title: "Edu camp",
+              },
             ],
             requestId: "camp-coverage-1",
             strategyRequestId: "strategy-1",
@@ -2387,6 +2429,123 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.coverage.status).toBe("partial");
       expect(result.data.coverage.missingFlows).toContain("pakiet lite");
       expect(result.data.coverage.missingCampaigns).toContain("pakiet max");
+    });
+  });
+
+  describe("communication improvement recommendations (Story 6.3)", () => {
+    it("returns recommendations sorted by priority and impact", async () => {
+      const now = new Date("2026-02-17T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet pro", "pakiet lite", "pakiet vip"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([
+        {
+          id: "flow-reco-1",
+          requestId: "flow-reco-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                name: "Flow pakiet pro welcome",
+                trigger: "signup",
+                objective: "activate",
+                priority: "HIGH",
+                businessReason: "coverage",
+              },
+            ],
+            requestId: "flow-reco-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+          },
+        },
+      ]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([
+        {
+          id: "camp-reco-1",
+          requestId: "camp-reco-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            items: [
+              {
+                weekNumber: 1,
+                campaignType: "PROMO",
+                goal: "promocja pakiet pro",
+                segment: "VIP",
+                title: "Kampania pakiet pro",
+              },
+              {
+                weekNumber: 2,
+                campaignType: "NEWSLETTER",
+                goal: "newsletter pakiet lite",
+                segment: "VIP",
+                title: "Edukacja pakiet lite",
+              },
+              {
+                weekNumber: 3,
+                campaignType: "LIFECYCLE",
+                goal: "retencja",
+                segment: "VIP",
+                title: "Lifecycle retention",
+              },
+              {
+                weekNumber: 4,
+                campaignType: "EDUCATIONAL",
+                goal: "edukacja",
+                segment: "VIP",
+                title: "Edu camp",
+              },
+            ],
+            requestId: "camp-reco-1",
+            strategyRequestId: "strategy-1",
+            generatedAt: now.toISOString(),
+            requiresManualValidation: false,
+          },
+        },
+      ]);
+
+      const result = await analysisService.getCommunicationImprovementRecommendations("u1", "OWNER", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.recommendations.status).toBe("ok");
+      expect(result.data.recommendations.items).toHaveLength(3);
+      expect(result.data.recommendations.items[0]?.productName).toBe("pakiet vip");
+      expect(result.data.recommendations.items[0]?.priority).toBe("CRITICAL");
+      expect(result.data.recommendations.items[1]?.productName).toBe("pakiet lite");
+      expect(result.data.recommendations.items[1]?.priority).toBe("HIGH");
+      expect(result.data.recommendations.items[2]?.productName).toBe("pakiet pro");
+    });
+
+    it("returns missing_context when main products are unavailable", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue(null);
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getCommunicationImprovementRecommendations("u1", "STRATEGY", {
+        clientId: "client-1",
+      });
+
+      expect(result.data.recommendations.status).toBe("missing_context");
+      expect(result.data.recommendations.items).toHaveLength(0);
     });
   });
 });

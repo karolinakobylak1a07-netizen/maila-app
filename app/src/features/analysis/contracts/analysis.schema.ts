@@ -455,6 +455,30 @@ export const productCoverageAnalysisSchema = z.object({
 export const getProductCoverageAnalysisSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const communicationImprovementRecommendationStatusSchema = z.enum([
+  "ok",
+  "missing_context",
+]);
+export const communicationImprovementRecommendationItemSchema = z.object({
+  id: z.string().min(1),
+  productName: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  priority: priorityLevelSchema,
+  impactScore: z.number().int().min(0).max(100),
+  status: productCoverageItemStatusSchema,
+  action: z.string().min(1),
+});
+export const communicationImprovementRecommendationsSchema = z.object({
+  clientId: z.string().cuid(),
+  status: communicationImprovementRecommendationStatusSchema,
+  requestId: z.string().min(1),
+  generatedAt: z.date(),
+  items: z.array(communicationImprovementRecommendationItemSchema),
+});
+export const getCommunicationImprovementRecommendationsSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -479,6 +503,7 @@ export type GetImplementationAlertsSchema = z.infer<typeof getImplementationAler
 export type GetImplementationReportSchema = z.infer<typeof getImplementationReportSchema>;
 export type GetAuditProductContextSchema = z.infer<typeof getAuditProductContextSchema>;
 export type GetProductCoverageAnalysisSchema = z.infer<typeof getProductCoverageAnalysisSchema>;
+export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof getCommunicationImprovementRecommendationsSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -576,3 +601,6 @@ export type ProductCoverageItemStatus = z.infer<typeof productCoverageItemStatus
 export type ProductCoverageAnalysisStatus = z.infer<typeof productCoverageAnalysisStatusSchema>;
 export type ProductCoverageItem = z.infer<typeof productCoverageItemSchema>;
 export type ProductCoverageAnalysis = z.infer<typeof productCoverageAnalysisSchema>;
+export type CommunicationImprovementRecommendationStatus = z.infer<typeof communicationImprovementRecommendationStatusSchema>;
+export type CommunicationImprovementRecommendationItem = z.infer<typeof communicationImprovementRecommendationItemSchema>;
+export type CommunicationImprovementRecommendations = z.infer<typeof communicationImprovementRecommendationsSchema>;
