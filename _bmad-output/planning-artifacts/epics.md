@@ -1013,3 +1013,25 @@ So that zespol widzi jakosc uczenia i moze eksportowac wynik do pracy operacyjne
 **When** raport jest generowany
 **Then** status raportu to `insufficient_data`
 **And** raport zwraca bezpieczne wartosci domyslne i insight fallback.
+
+## Epic 8: Multi-Channel Drafting (SMS)
+
+Zespol moze generowac drafty kampanii SMS powiazane z kampaniami klienta, wraz z historia i szybka akceptacja.
+
+### Story 8.1: Drafty kampanii SMS
+
+As a Content/Owner user,
+I want wygenerowac draft SMS z CTA, stylem i timingiem oraz przegladac historie draftow,
+So that moge szybciej przygotowac krotsza komunikacje kampanijna poza emailem.
+
+**Acceptance Criteria:**
+
+**Given** aktywny klient i kontekst kampanii SMS
+**When** wywoluje `generateSmsCampaignDraft`
+**Then** system zwraca draft z `campaignId`, `userId`, `message`, `cta`, `length`, `status`
+**And** pilnuje limitu dlugosci SMS (<= 160 znakow) i statusu `ok` / `too_long`.
+
+**Given** istnieja poprzednie drafty SMS dla kampanii
+**When** wywoluje `getSmsCampaignDraftHistory`
+**Then** system zwraca historie draftow dla `clientId + campaignId`
+**And** UI pokazuje ostatni draft, historie oraz akcje "Wygeneruj ponownie" i "Zatwierdz".
