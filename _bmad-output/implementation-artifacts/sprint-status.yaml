@@ -65,8 +65,8 @@ development_status:
   4-2-generowanie-draftow-maili-z-briefu: done
   4-3-personalizacja-draftow-na-bazie-segmentow: done
   epic-4-retrospective: optional
-  epic-5: backlog
-  5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: backlog
+  epic-5: in-progress
+  5-1-checklisty-wdrozeniowe-z-trackingiem-realizacji: done
   5-2-mapa-zaleznosci-miedzy-flow-segmentami-i-kampaniami: backlog
   5-3-detekcja-konfliktow-wdrozeniowych: backlog
   5-4-eksport-paczki-materialow-do-wdrozenia-w-klaviyo: backlog
