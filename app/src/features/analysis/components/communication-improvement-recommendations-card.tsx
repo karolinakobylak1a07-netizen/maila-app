@@ -10,6 +10,9 @@ type CommunicationImprovementRecommendationsCardProps = {
   requestId: string | null;
   recommendations: CommunicationImprovementRecommendations | null;
   onRefresh: () => void;
+  onUpdateRecommendations?: () => void;
+  updatingRecommendations?: boolean;
+  updateMessage?: string | null;
   onSubmitFeedback?: (payload: { artifactId: string; rating: number; comment: string }) => Promise<void>;
   feedbackSubmitting?: boolean;
 };
@@ -34,19 +37,32 @@ export function CommunicationImprovementRecommendationsCard(
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-medium text-slate-900">Rekomendacje usprawnien komunikacji</h2>
-        <button
-          type="button"
-          onClick={props.onRefresh}
-          disabled={props.refreshing}
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {props.refreshing ? "Odswiezanie..." : "Odswiez rekomendacje"}
-        </button>
+        <div className="flex items-center gap-2">
+          {props.onUpdateRecommendations && (
+            <button
+              type="button"
+              onClick={props.onUpdateRecommendations}
+              disabled={props.updatingRecommendations}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {props.updatingRecommendations ? "Aktualizacja..." : "Zaktualizuj rekomendacje"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={props.onRefresh}
+            disabled={props.refreshing}
+            className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {props.refreshing ? "Odswiezanie..." : "Odswiez rekomendacje"}
+          </button>
+        </div>
       </div>
 
       {props.requestId && <p className="mb-2 text-xs text-slate-500">Request ID: {props.requestId}</p>}
       {props.loading && <p className="text-sm text-slate-600">Ladowanie rekomendacji...</p>}
       {props.error && <p className="text-sm text-red-700">{props.error}</p>}
+      {props.updateMessage && <p className="text-sm text-emerald-700">{props.updateMessage}</p>}
 
       {!props.loading && !props.error && !props.recommendations && (
         <p className="text-sm text-slate-600">Brak danych rekomendacji.</p>

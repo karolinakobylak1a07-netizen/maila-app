@@ -3369,4 +3369,138 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.analysis.topPerformers.recommendationId).toBeNull();
     });
   });
+
+  describe("strategy recommendation update from KPI and feedback (Story 7.4)", () => {
+    it("deprecates old recommendations and creates new active version when blended score is below threshold", async () => {
+      const now = new Date("2026-02-24T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "existing-version",
+          requestId: "existing-version",
+          eventName: "strategy.recommendation.updated",
+          createdAt: now,
+          actorId: "u1",
+          details: { current: { version: 2 } },
+        },
+        {
+          id: "campaign-low-1",
+          requestId: "campaign-low-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: {
+            openRate: 18,
+            clickRate: 4,
+            conversions: 2,
+            revenue: 100,
+            recipients: 300,
+            avgTimeToOpen: 120,
+            segmentId: "vip",
+            draftId: "old-rec-1",
+          },
+        },
+        {
+          id: "feedback-low-1",
+          requestId: "feedback-low-1",
+          eventName: "feedback.recommendation.submitted",
+          createdAt: now,
+          actorId: "u1",
+          details: { rating: 2, comment: "slaba trafnosc" },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet vip"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.updateStrategyRecommendations("u1", "OWNER", {
+        clientId: "client-1",
+        threshold: 120,
+      });
+
+      expect(result.data.result.status).toBe("updated");
+      expect(result.data.result.previousVersion).toBe(2);
+      expect(result.data.result.currentVersion).toBe(3);
+      expect(result.data.result.activeRecommendations.length).toBeGreaterThan(0);
+      expect(mockRepository.createAuditLog).toHaveBeenCalled();
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "strategy.recommendation.deprecated_due_to_performance",
+        }),
+      );
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "strategy.recommendation.updated",
+        }),
+      );
+    });
+
+    it("returns no_change when blended score is above threshold", async () => {
+      const now = new Date("2026-02-24T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "campaign-good-1",
+          requestId: "campaign-good-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: {
+            openRate: 82,
+            clickRate: 44,
+            conversions: 60,
+            revenue: 2500,
+            recipients: 350,
+            avgTimeToOpen: 22,
+            segmentId: "vip",
+            draftId: "rec-1",
+          },
+        },
+        {
+          id: "feedback-good-1",
+          requestId: "feedback-good-1",
+          eventName: "feedback.recommendation.submitted",
+          createdAt: now,
+          actorId: "u1",
+          details: { rating: 5, comment: "bardzo dobre" },
+        },
+      ]);
+      mockRepository.listLatestSegmentProposalAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.findAuditProductContext = vi.fn().mockResolvedValue({
+        offer: "Subskrypcja premium",
+        targetAudience: "SMB ecommerce",
+        mainProducts: ["pakiet vip"],
+        currentFlows: ["welcome"],
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+      });
+      mockRepository.listLatestFlowPlanAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCampaignCalendarAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.updateStrategyRecommendations("u1", "OWNER", {
+        clientId: "client-1",
+        threshold: 80,
+      });
+
+      expect(result.data.result.status).toBe("no_change");
+      expect(result.data.result.activeRecommendations).toHaveLength(0);
+      expect(result.data.result.deprecatedRecommendationIds).toHaveLength(0);
+    });
+  });
 });

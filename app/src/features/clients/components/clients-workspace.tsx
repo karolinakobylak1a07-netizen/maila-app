@@ -129,6 +129,7 @@ export function ClientsWorkspace() {
   const [communicationRecommendationsError, setCommunicationRecommendationsError] = useState<string | null>(null);
   const [communicationRecommendationsLoading, setCommunicationRecommendationsLoading] = useState(false);
   const [communicationRecommendationsRefreshing, setCommunicationRecommendationsRefreshing] = useState(false);
+  const [communicationRecommendationsUpdateMessage, setCommunicationRecommendationsUpdateMessage] = useState<string | null>(null);
   const [campaignEffectivenessError, setCampaignEffectivenessError] = useState<string | null>(null);
   const [campaignEffectivenessLoading, setCampaignEffectivenessLoading] = useState(false);
   const [campaignEffectivenessRefreshing, setCampaignEffectivenessRefreshing] = useState(false);
@@ -363,6 +364,7 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const updateStrategyRecommendationsMutation = api.analysis.updateStrategyRecommendations.useMutation();
   const submitArtifactFeedbackMutation = api.analysis.submitArtifactFeedback.useMutation();
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
   const updateImplementationChecklistStepMutation = api.analysis.updateImplementationChecklistStep.useMutation();
@@ -1372,6 +1374,7 @@ export function ClientsWorkspace() {
     }
 
     setCommunicationRecommendationsRefreshing(true);
+    setCommunicationRecommendationsUpdateMessage(null);
     try {
       await communicationRecommendationsQuery.refetch();
       setCommunicationRecommendationsError(null);
@@ -1381,6 +1384,45 @@ export function ClientsWorkspace() {
       );
     } finally {
       setCommunicationRecommendationsRefreshing(false);
+    }
+  };
+
+  const updateStrategyRecommendations = async () => {
+    if (!activeClientId) {
+      setCommunicationRecommendationsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Czy na pewno chcesz zaktualizowac rekomendacje na podstawie KPI i feedbacku?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setCommunicationRecommendationsUpdateMessage(null);
+    try {
+      const result = await updateStrategyRecommendationsMutation.mutateAsync({
+        clientId: activeClientId,
+      });
+      const status = result?.data.result.status;
+      if (status === "updated") {
+        setCommunicationRecommendationsUpdateMessage(
+          "Rekomendacje zostaly zaktualizowane na podstawie KPI i feedbacku.",
+        );
+      } else {
+        setCommunicationRecommendationsUpdateMessage(
+          "Brak potrzeby aktualizacji rekomendacji (wynik powyzej progu).",
+        );
+      }
+      await refresh();
+    } catch (error) {
+      setCommunicationRecommendationsError(
+        withRequestId(
+          "Nie udalo sie zaktualizowac rekomendacji.",
+          extractRequestId(error),
+        ),
+      );
     }
   };
 
@@ -1786,12 +1828,15 @@ export function ClientsWorkspace() {
             loading={communicationRecommendationsLoading}
             refreshing={communicationRecommendationsRefreshing}
             error={communicationRecommendationsError}
+            updateMessage={communicationRecommendationsUpdateMessage}
             requestId={
               communicationRecommendationsQuery.data?.meta.requestId ??
               extractRequestId(communicationRecommendationsQuery.error)
             }
             recommendations={communicationRecommendationsQuery.data?.data.recommendations ?? null}
             onRefresh={refreshCommunicationRecommendations}
+            onUpdateRecommendations={updateStrategyRecommendations}
+            updatingRecommendations={updateStrategyRecommendationsMutation.isPending}
             feedbackSubmitting={submitArtifactFeedbackMutation.isPending}
             onSubmitFeedback={async ({ artifactId, rating, comment }) => {
               await submitRecommendationFeedback(artifactId, rating, comment);

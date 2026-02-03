@@ -591,6 +591,45 @@ export interface GetStrategyKPIAnalysisOutput {
   };
 }
 
+export interface UpdateStrategyRecommendationsInput {
+  clientId: string;
+  rangeStart?: Date;
+  rangeEnd?: Date;
+  threshold?: number;
+}
+
+export interface UpdateStrategyRecommendationsOutput {
+  data: {
+    result: {
+      clientId: string;
+      requestId: string;
+      generatedAt: Date;
+      status: "updated" | "no_change";
+      blendedScore: number;
+      performanceScore: number;
+      feedbackScore: number;
+      previousVersion: number;
+      currentVersion: number;
+      deprecatedRecommendationIds: string[];
+      activeRecommendations: Array<{
+        id: string;
+        previousId: string;
+        version: number;
+        title: string;
+        description: string;
+        priority: PriorityLevel;
+        impactScore: number;
+        action: string;
+        status: "active";
+        manualAccept: boolean;
+      }>;
+    };
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export interface SubmitArtifactFeedbackInput {
   clientId: string;
   targetType: "recommendation" | "draft";
@@ -2796,6 +2835,174 @@ export class AnalysisService {
     };
   }
 
+  async updateStrategyRecommendations(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: UpdateStrategyRecommendationsInput,
+  ): Promise<UpdateStrategyRecommendationsOutput> {
+    const requestId = `strategy-recommendation-update-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const rangeEnd = input.rangeEnd ?? new Date();
+    const rangeStart =
+      input.rangeStart ?? new Date(rangeEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const threshold = input.threshold ?? 120;
+
+    const [kpiAnalysis, recommendationSnapshot, logs] = await Promise.all([
+      this.getStrategyKPIAnalysis(userId, role, {
+        clientId: input.clientId,
+        rangeStart,
+        rangeEnd,
+      }),
+      this.getCommunicationImprovementRecommendations(userId, role, {
+        clientId: input.clientId,
+      }),
+      this.repository.listLatestClientAuditLogs(input.clientId, 200),
+    ]);
+
+    const performanceScore = this.computePerformanceScore({
+      campaignCount: kpiAnalysis.data.analysis.overall.campaignCount,
+      openRate: kpiAnalysis.data.analysis.overall.openRate,
+      clickRate: kpiAnalysis.data.analysis.overall.clickRate,
+      revenue: kpiAnalysis.data.analysis.overall.revenuePerRecipient * 100,
+      conversions: Math.round(kpiAnalysis.data.analysis.overall.cvr),
+    });
+
+    const feedbackLogs = logs.filter(
+      (log) =>
+        log.eventName === "feedback.recommendation.submitted" ||
+        log.eventName === "feedback.draft.submitted",
+    );
+    const feedback = this.aggregateFeedbackMetrics(feedbackLogs);
+    const feedbackScore = this.computeFeedbackScore(
+      feedback.averageRating,
+      feedback.feedbackCount,
+    );
+    const blendedScore = Number((performanceScore + feedbackScore).toFixed(2));
+
+    const previousVersion = this.resolveLatestRecommendationVersion(logs);
+
+    if (
+      blendedScore >= threshold ||
+      recommendationSnapshot.data.recommendations.items.length === 0
+    ) {
+      return {
+        data: {
+          result: {
+            clientId: input.clientId,
+            requestId,
+            generatedAt: new Date(),
+            status: "no_change",
+            blendedScore,
+            performanceScore,
+            feedbackScore,
+            previousVersion,
+            currentVersion: previousVersion,
+            deprecatedRecommendationIds: [],
+            activeRecommendations: [],
+          },
+        },
+        meta: { requestId },
+      };
+    }
+
+    const currentVersion = previousVersion + 1;
+    const deprecatedRecommendationIds = recommendationSnapshot.data.recommendations.items.map(
+      (item) => item.id,
+    );
+
+    await Promise.all(
+      deprecatedRecommendationIds.map((recommendationId) =>
+        this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "strategy.recommendation.deprecated_due_to_performance",
+          requestId,
+          entityType: "CLIENT",
+          entityId: input.clientId,
+          details: this.enrichAuditDetails({
+            userId,
+            actionType: "strategy.recommendation.deprecated_due_to_performance",
+            artifactId: recommendationId,
+            previous: { manualAccept: true, status: "active" },
+            current: { manualAccept: false, status: "deprecated" },
+            extra: {
+              reason: "deprecated_due_to_performance",
+              blendedScore,
+              threshold,
+            },
+          }),
+        }),
+      ),
+    );
+
+    const activeRecommendations = recommendationSnapshot.data.recommendations.items.map(
+      (item) => {
+        const segmentSuggestion =
+          kpiAnalysis.data.analysis.topPerformers.segmentId ?? "segment-primary";
+        return {
+          id: `${item.id}-v${currentVersion}`,
+          previousId: item.id,
+          version: currentVersion,
+          title: `${item.title} (v${currentVersion})`,
+          description: `${item.description} Ulepszenie: test alternatywnego segmentu ${segmentSuggestion}.`,
+          priority: item.priority,
+          impactScore: item.impactScore,
+          action: `${item.action} Zmien CTA na wariant eksperymentalny i przetestuj nowy headline.`,
+          status: "active" as const,
+          manualAccept: false,
+        };
+      },
+    );
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "strategy.recommendation.updated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: this.enrichAuditDetails({
+        userId,
+        actionType: "strategy.recommendation.updated",
+        artifactId: requestId,
+        previous: {
+          version: previousVersion,
+          recommendationIds: deprecatedRecommendationIds,
+        },
+        current: {
+          version: currentVersion,
+          recommendationIds: activeRecommendations.map((item) => item.id),
+          active: true,
+        },
+        extra: {
+          blendedScore,
+          performanceScore,
+          feedbackScore,
+          threshold,
+          activeRecommendations,
+        },
+      }),
+    });
+
+    return {
+      data: {
+        result: {
+          clientId: input.clientId,
+          requestId,
+          generatedAt: new Date(),
+          status: "updated",
+          blendedScore,
+          performanceScore,
+          feedbackScore,
+          previousVersion,
+          currentVersion,
+          deprecatedRecommendationIds,
+          activeRecommendations,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   async submitArtifactFeedback(
     userId: string,
     role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
@@ -2986,6 +3193,30 @@ export class AnalysisService {
     }
 
     return Number((Math.max(0, Math.min(5, averageRating)) * 20).toFixed(2));
+  }
+
+  private resolveLatestRecommendationVersion(
+    logs: Array<{ eventName: string; details: unknown }>,
+  ) {
+    for (const log of logs) {
+      if (log.eventName !== "strategy.recommendation.updated") {
+        continue;
+      }
+      if (!log.details || typeof log.details !== "object") {
+        continue;
+      }
+      const details = log.details as Record<string, unknown>;
+      const current = details.current;
+      if (!current || typeof current !== "object") {
+        continue;
+      }
+      const version = Number((current as Record<string, unknown>).version);
+      if (Number.isFinite(version) && version > 0) {
+        return Math.trunc(version);
+      }
+    }
+
+    return 1;
   }
 
   private parseStrategyPerformanceRow(

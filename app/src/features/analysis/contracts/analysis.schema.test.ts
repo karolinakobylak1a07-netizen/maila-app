@@ -66,6 +66,9 @@ import {
   strategyKPIAnalysisStatusSchema,
   strategyKPIAnalysisSchema,
   getStrategyKPIAnalysisSchema,
+  updateStrategyRecommendationsSchema,
+  updateStrategyRecommendationsResultSchema,
+  updateStrategyRecommendationsResultStatusSchema,
   artifactFeedbackTargetTypeSchema,
   artifactFeedbackSchema,
   submitArtifactFeedbackSchema,
@@ -994,6 +997,46 @@ describe('OptimizationArea Schema', () => {
           clientId: 'cm0000000000000000000000',
           rangeStart: '2026-02-01T00:00:00.000Z',
           rangeEnd: '2026-02-22T23:59:59.000Z',
+        }).success,
+      ).toBe(true);
+    });
+
+    it('should parse strategy recommendation update payload and input', () => {
+      expect(updateStrategyRecommendationsResultStatusSchema.safeParse('updated').success).toBe(true);
+      expect(updateStrategyRecommendationsResultStatusSchema.safeParse('no_change').success).toBe(true);
+
+      const payloadResult = updateStrategyRecommendationsResultSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        requestId: 'strategy-recommendation-update-1',
+        generatedAt: new Date('2026-02-24T10:00:00.000Z'),
+        status: 'updated',
+        blendedScore: 88,
+        performanceScore: 44,
+        feedbackScore: 44,
+        previousVersion: 2,
+        currentVersion: 3,
+        deprecatedRecommendationIds: ['rec-1', 'rec-2'],
+        activeRecommendations: [
+          {
+            id: 'rec-1-v3',
+            previousId: 'rec-1',
+            version: 3,
+            title: 'Nowa rekomendacja',
+            description: 'Ulepszona wersja',
+            priority: 'HIGH',
+            impactScore: 82,
+            action: 'Zmien CTA i headline',
+            status: 'active',
+            manualAccept: false,
+          },
+        ],
+      });
+      expect(payloadResult.success).toBe(true);
+
+      expect(
+        updateStrategyRecommendationsSchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          threshold: 120,
         }).success,
       ).toBe(true);
     });
