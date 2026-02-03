@@ -4,6 +4,7 @@ import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
   CampaignCalendar,
   CampaignCalendarItem,
+  CommunicationBrief,
   EmailStrategy,
   FlowPlan,
   FlowPlanItem,
@@ -218,6 +219,36 @@ export interface GenerateSegmentProposalOutput {
 export interface GetLatestSegmentProposalOutput {
   data: {
     segmentProposal: SegmentProposal | null;
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
+export interface GenerateCommunicationBriefInput {
+  clientId: string;
+  campaignGoal?: string;
+  segment?: string;
+  requestId?: string;
+}
+
+export interface GetLatestCommunicationBriefInput {
+  clientId: string;
+}
+
+export interface GenerateCommunicationBriefOutput {
+  data: {
+    brief: CommunicationBrief;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestCommunicationBriefOutput {
+  data: {
+    brief: CommunicationBrief | null;
   };
   meta: {
     requestId: string;
@@ -891,6 +922,97 @@ export class AnalysisService {
     };
   }
 
+  async generateCommunicationBrief(
+    userId: string,
+    role: "OWNER" | "CONTENT" | "STRATEGY",
+    input: GenerateCommunicationBriefInput,
+  ): Promise<GenerateCommunicationBriefOutput> {
+    const requestId = input.requestId ?? `communication-brief-generate-${Date.now()}`;
+    await this.validateContentBriefAccess(userId, role, input.clientId, requestId);
+
+    const [strategyRecords, existingBriefs] = await Promise.all([
+      this.repository.listLatestEmailStrategyAudit(input.clientId, 20),
+      this.repository.listLatestCommunicationBriefAudit(input.clientId, 20),
+    ]);
+    const latestStrategy = this.parseLatestEmailStrategy(strategyRecords);
+    const latestBrief = this.parseLatestCommunicationBrief(existingBriefs);
+    const nextVersion = (latestBrief?.version ?? 0) + 1;
+
+    const missingFields: string[] = [];
+    if (!input.campaignGoal || input.campaignGoal.trim().length === 0) {
+      missingFields.push("campaignGoal");
+    }
+    if (!input.segment || input.segment.trim().length === 0) {
+      missingFields.push("segment");
+    }
+    if (!latestStrategy || latestStrategy.status !== "ok") {
+      missingFields.push("approved_strategy");
+    }
+
+    if (missingFields.length > 0) {
+      const brief = this.buildCommunicationBriefRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "missing_required_fields",
+        campaignGoal: (input.campaignGoal ?? "").trim() || "missing_campaign_goal",
+        segment: (input.segment ?? "").trim() || "missing_segment",
+        tone: latestStrategy?.tone ?? "manual_validation_required",
+        priority: latestStrategy?.priorities[0] ?? "manual_priority_required",
+        kpi: latestStrategy?.kpis[0] ?? "manual_kpi_required",
+        requestId,
+        strategyRequestId: latestStrategy?.requestId ?? "missing-strategy",
+        missingFields,
+      });
+      return {
+        data: { brief },
+        meta: { generatedAt: brief.generatedAt, requestId },
+      };
+    }
+
+    const brief = this.buildCommunicationBriefRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      campaignGoal: input.campaignGoal!.trim(),
+      segment: input.segment!.trim(),
+      tone: latestStrategy!.tone,
+      priority: latestStrategy!.priorities[0] ?? "Core priority",
+      kpi: latestStrategy!.kpis[0] ?? "conversion_rate",
+      requestId,
+      strategyRequestId: latestStrategy!.requestId,
+      missingFields: [],
+    });
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "content.communication_brief.generated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: brief,
+    });
+
+    return {
+      data: { brief },
+      meta: { generatedAt: brief.generatedAt, requestId },
+    };
+  }
+
+  async getLatestCommunicationBrief(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    input: GetLatestCommunicationBriefInput,
+  ): Promise<GetLatestCommunicationBriefOutput> {
+    const requestId = `communication-brief-latest-${Date.now()}`;
+    await this.validateContentBriefReadAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestCommunicationBriefAudit(input.clientId, 20);
+    const brief = this.parseLatestCommunicationBrief(records) ?? null;
+    return {
+      data: { brief },
+      meta: { requestId },
+    };
+  }
+
   private async validateAccess(userId: string, role: "OWNER" | "STRATEGY", clientId: string) {
     const membership = await this.repository.findMembership(userId, clientId);
     if (!membership) {
@@ -933,6 +1055,90 @@ export class AnalysisService {
         "rbac_module_edit_forbidden",
         { module: "AUDIT", role },
         "unknown",
+      );
+    }
+  }
+
+  private async validateContentBriefReadAccess(
+    userId: string,
+    role: "OWNER" | "CONTENT",
+    clientId: string,
+  ) {
+    const membership = await this.repository.findMembership(userId, clientId);
+    if (!membership) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "user_not_member_of_client" },
+        "unknown",
+      );
+    }
+
+    const policies = await this.repository.listRbacPoliciesByRole(role);
+    const contentPolicy = policies.find((policy) => policy.module === "CONTENT");
+    if (!contentPolicy || !contentPolicy.canView) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "rbac_module_view_forbidden",
+        { module: "CONTENT", role },
+        "unknown",
+      );
+    }
+  }
+
+  private async validateContentBriefAccess(
+    userId: string,
+    role: "OWNER" | "CONTENT" | "STRATEGY",
+    clientId: string,
+    requestId: string,
+  ) {
+    const membership = await this.repository.findMembership(userId, clientId);
+    if (!membership) {
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "user_not_member_of_client" },
+        requestId,
+      );
+    }
+
+    if (role !== "OWNER" && role !== "CONTENT") {
+      try {
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "content.communication_brief.forbidden_attempt",
+          requestId,
+          entityType: "CLIENT",
+          entityId: clientId,
+          details: { role, reason: "content_or_owner_required" },
+        });
+      } catch {}
+      throw new AnalysisDomainError(
+        "forbidden",
+        "forbidden",
+        { reason: "content_or_owner_required", role },
+        requestId,
+      );
+    }
+
+    const policies = await this.repository.listRbacPoliciesByRole(role);
+    const contentPolicy = policies.find((policy) => policy.module === "CONTENT");
+    if (!contentPolicy || !contentPolicy.canEdit) {
+      try {
+        await this.repository.createAuditLog({
+          actorId: userId,
+          eventName: "content.communication_brief.forbidden_attempt",
+          requestId,
+          entityType: "CLIENT",
+          entityId: clientId,
+          details: { role, reason: "rbac_content_edit_forbidden" },
+        });
+      } catch {}
+      throw new AnalysisDomainError(
+        "forbidden",
+        "rbac_module_edit_forbidden",
+        { module: "CONTENT", role },
+        requestId,
       );
     }
   }
@@ -1631,6 +1837,93 @@ export class AnalysisService {
   private parseLatestSegmentProposal(records: Array<{ details: unknown }>): SegmentProposal | null {
     for (const record of records) {
       const parsed = this.parseSegmentProposal(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private buildCommunicationBriefRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "missing_required_fields";
+    campaignGoal: string;
+    segment: string;
+    tone: string;
+    priority: string;
+    kpi: string;
+    requestId: string;
+    strategyRequestId: string;
+    missingFields: string[];
+  }): CommunicationBrief {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      campaignGoal: payload.campaignGoal,
+      segment: payload.segment,
+      tone: payload.tone,
+      priority: payload.priority,
+      kpi: payload.kpi,
+      requestId: payload.requestId,
+      strategyRequestId: payload.strategyRequestId,
+      generatedAt: new Date(),
+      missingFields: payload.missingFields,
+    };
+  }
+
+  private parseCommunicationBrief(details: unknown): CommunicationBrief | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<CommunicationBrief>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      typeof value.campaignGoal !== "string" ||
+      typeof value.segment !== "string" ||
+      typeof value.tone !== "string" ||
+      typeof value.priority !== "string" ||
+      typeof value.kpi !== "string" ||
+      typeof value.requestId !== "string" ||
+      typeof value.strategyRequestId !== "string" ||
+      !Array.isArray(value.missingFields)
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "missing_required_fields"] as const;
+    const isBriefStatus = (item: unknown): item is CommunicationBrief["status"] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isBriefStatus(value.status)) {
+      return null;
+    }
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      campaignGoal: value.campaignGoal,
+      segment: value.segment,
+      tone: value.tone,
+      priority: value.priority,
+      kpi: value.kpi,
+      requestId: value.requestId,
+      strategyRequestId: value.strategyRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      missingFields: value.missingFields.filter((item): item is string => typeof item === "string"),
+    };
+  }
+
+  private parseLatestCommunicationBrief(records: Array<{ details: unknown }>): CommunicationBrief | null {
+    for (const record of records) {
+      const parsed = this.parseCommunicationBrief(record.details);
       if (parsed) {
         return parsed;
       }

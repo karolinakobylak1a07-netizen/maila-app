@@ -32,6 +32,7 @@ import { ContextInsightsList } from "~/features/analysis/components/context-insi
 import { FlowPlanCard } from "~/features/analysis/components/flow-plan-card";
 import { CampaignCalendarCard } from "~/features/analysis/components/campaign-calendar-card";
 import { SegmentProposalCard } from "~/features/analysis/components/segment-proposal-card";
+import { CommunicationBriefCard } from "~/features/analysis/components/communication-brief-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -92,6 +93,8 @@ export function ClientsWorkspace() {
   const [campaignCalendarLoading, setCampaignCalendarLoading] = useState(false);
   const [segmentProposalError, setSegmentProposalError] = useState<string | null>(null);
   const [segmentProposalLoading, setSegmentProposalLoading] = useState(false);
+  const [communicationBriefError, setCommunicationBriefError] = useState<string | null>(null);
+  const [communicationBriefLoading, setCommunicationBriefLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -198,6 +201,16 @@ export function ClientsWorkspace() {
     },
   );
   const generateSegmentProposalMutation = api.analysis.generateSegmentProposal.useMutation();
+  const latestCommunicationBriefQuery = api.analysis.getLatestCommunicationBrief.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
+  const generateCommunicationBriefMutation = api.analysis.generateCommunicationBrief.useMutation();
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -265,6 +278,7 @@ export function ClientsWorkspace() {
       utils.analysis.getLatestFlowPlan.invalidate(),
       utils.analysis.getLatestCampaignCalendar.invalidate(),
       utils.analysis.getLatestSegmentProposal.invalidate(),
+      utils.analysis.getLatestCommunicationBrief.invalidate(),
     ]);
   };
 
@@ -690,6 +704,30 @@ export function ClientsWorkspace() {
     latestSegmentProposalQuery.error,
   ]);
 
+  useEffect(() => {
+    if (latestCommunicationBriefQuery.isLoading) {
+      setCommunicationBriefLoading(true);
+      setCommunicationBriefError(null);
+      return;
+    }
+
+    if (latestCommunicationBriefQuery.isError) {
+      setCommunicationBriefLoading(false);
+      const requestId = extractRequestId(latestCommunicationBriefQuery.error);
+      setCommunicationBriefError(
+        withRequestId("Nie udalo sie pobrac briefu komunikacyjnego.", requestId),
+      );
+      return;
+    }
+
+    setCommunicationBriefLoading(false);
+    setCommunicationBriefError(null);
+  }, [
+    latestCommunicationBriefQuery.isLoading,
+    latestCommunicationBriefQuery.isError,
+    latestCommunicationBriefQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -738,6 +776,32 @@ export function ClientsWorkspace() {
       setSegmentProposalError(
         withRequestId(
           "Nie udalo sie wygenerowac propozycji segmentacji.",
+          extractRequestId(error),
+        ),
+      );
+    }
+  };
+
+  const generateCommunicationBrief = async (payload: {
+    campaignGoal: string;
+    segment: string;
+  }) => {
+    if (!activeClientId) {
+      setCommunicationBriefError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    try {
+      await generateCommunicationBriefMutation.mutateAsync({
+        clientId: activeClientId,
+        campaignGoal: payload.campaignGoal,
+        segment: payload.segment,
+      });
+      await refresh();
+    } catch (error) {
+      setCommunicationBriefError(
+        withRequestId(
+          "Nie udalo sie wygenerowac briefu komunikacyjnego.",
           extractRequestId(error),
         ),
       );
@@ -875,6 +939,19 @@ export function ClientsWorkspace() {
             }
             segmentProposal={latestSegmentProposalQuery.data?.data.segmentProposal ?? null}
             onGenerate={generateSegmentProposal}
+          />
+        </div>
+        <div className="mt-4">
+          <CommunicationBriefCard
+            loading={communicationBriefLoading}
+            generating={generateCommunicationBriefMutation.isPending}
+            error={communicationBriefError}
+            requestId={
+              latestCommunicationBriefQuery.data?.meta.requestId ??
+              extractRequestId(latestCommunicationBriefQuery.error)
+            }
+            brief={latestCommunicationBriefQuery.data?.data.brief ?? null}
+            onGenerate={generateCommunicationBrief}
           />
         </div>
         </div>

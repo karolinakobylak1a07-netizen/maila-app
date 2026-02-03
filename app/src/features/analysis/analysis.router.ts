@@ -14,6 +14,8 @@ import {
   getLatestCampaignCalendarSchema,
   generateSegmentProposalSchema,
   getLatestSegmentProposalSchema,
+  generateCommunicationBriefSchema,
+  getLatestCommunicationBriefSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
@@ -33,6 +35,8 @@ type AnalysisServiceContract = Pick<
   | "getLatestCampaignCalendar"
   | "generateSegmentProposal"
   | "getLatestSegmentProposal"
+  | "generateCommunicationBrief"
+  | "getLatestCommunicationBrief"
 >;
 
 export const createAnalysisRouter = (
@@ -224,6 +228,34 @@ export const createAnalysisRouter = (
           return await analysisService.getLatestSegmentProposal(
             ctx.session.user.id,
             assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    generateCommunicationBrief: protectedProcedure
+      .input(generateCommunicationBriefSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await analysisService.generateCommunicationBrief(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT" | "STRATEGY",
+            input,
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getLatestCommunicationBrief: protectedProcedure
+      .input(getLatestCommunicationBriefSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getLatestCommunicationBrief(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "CONTENT",
             input,
           );
         } catch (error) {

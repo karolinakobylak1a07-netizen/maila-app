@@ -21,6 +21,9 @@ import {
   segmentProposalSchema,
   segmentProposalStatusSchema,
   generateSegmentProposalSchema,
+  communicationBriefSchema,
+  communicationBriefStatusSchema,
+  generateCommunicationBriefSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -441,6 +444,32 @@ describe('OptimizationArea Schema', () => {
     it('should validate generateSegmentProposal input', () => {
       expect(generateSegmentProposalSchema.safeParse({ clientId: 'cm0000000000000000000000' }).success).toBe(true);
       expect(generateSegmentProposalSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
+    });
+
+    it('should parse communication brief statuses and payload', () => {
+      expect(communicationBriefStatusSchema.safeParse('ok').success).toBe(true);
+      expect(communicationBriefStatusSchema.safeParse('missing_required_fields').success).toBe(true);
+
+      const result = communicationBriefSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        version: 1,
+        status: 'ok',
+        campaignGoal: 'Zwieksszyc konwersje',
+        segment: 'VIP',
+        tone: 'konkretny',
+        priority: 'Welcome',
+        kpi: 'conversion_rate',
+        requestId: 'req-brief',
+        strategyRequestId: 'req-strategy',
+        generatedAt: new Date('2026-02-07T12:00:00.000Z'),
+        missingFields: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate generateCommunicationBrief input', () => {
+      expect(generateCommunicationBriefSchema.safeParse({ clientId: 'cm0000000000000000000000', campaignGoal: 'Goal', segment: 'VIP' }).success).toBe(true);
+      expect(generateCommunicationBriefSchema.safeParse({ clientId: 'invalid' }).success).toBe(false);
     });
   });
 });

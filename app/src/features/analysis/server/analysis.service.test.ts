@@ -26,6 +26,7 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listLatestFlowPlanAudit: vi.fn(),
       listLatestCampaignCalendarAudit: vi.fn(),
       listLatestSegmentProposalAudit: vi.fn(),
+      listLatestCommunicationBriefAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -958,6 +959,126 @@ describe("AnalysisService.getOptimizationAreas", () => {
 
       expect(result.data.segmentProposal.status).toBe("failed_persist");
       expect(result.data.segmentProposal.segments).toHaveLength(0);
+    });
+  });
+
+  describe("generateCommunicationBrief (Story 4.1)", () => {
+    it("returns brief with goal, segment, tone, priority and KPI and persists artifact (AC1)", async () => {
+      const now = new Date("2026-02-07T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s1",
+          requestId: "strategy-brief-1",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome sequence"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-brief-1",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateCommunicationBrief("u1", "CONTENT", {
+        clientId: "client-1",
+        campaignGoal: "Aktywacja nowych klientow",
+        segment: "VIP",
+        requestId: "brief-req-1",
+      });
+
+      expect(result.data.brief.status).toBe("ok");
+      expect(result.data.brief.campaignGoal).toBe("Aktywacja nowych klientow");
+      expect(result.data.brief.segment).toBe("VIP");
+      expect(result.data.brief.tone).toBe("konkretny");
+      expect(result.data.brief.priority).toBe("Welcome sequence");
+      expect(result.data.brief.kpi).toBe("conversion_rate");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "content.communication_brief.generated",
+          requestId: "brief-req-1",
+        }),
+      );
+    });
+
+    it("returns missing_required_fields when segment or campaign goal is missing (AC2)", async () => {
+      const now = new Date("2026-02-07T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: true, canManage: false },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "s2",
+          requestId: "strategy-brief-2",
+          createdAt: now,
+          details: {
+            clientId: "client-1",
+            version: 1,
+            status: "ok",
+            goals: ["Wzrost konwersji"],
+            segments: ["VIP"],
+            tone: "konkretny",
+            priorities: ["Welcome sequence"],
+            kpis: ["conversion_rate"],
+            requestId: "strategy-brief-2",
+            lastSyncRequestId: "sync-1",
+            generatedAt: now.toISOString(),
+            missingPreconditions: [],
+          },
+        },
+      ]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.generateCommunicationBrief("u1", "CONTENT", {
+        clientId: "client-1",
+        campaignGoal: "",
+        segment: "",
+        requestId: "brief-req-2",
+      });
+
+      expect(result.data.brief.status).toBe("missing_required_fields");
+      expect(result.data.brief.missingFields).toContain("campaignGoal");
+      expect(result.data.brief.missingFields).toContain("segment");
+    });
+
+    it("throws forbidden and logs audit attempt for role other than Content/Owner (AC3)", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "CONTENT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestCommunicationBriefAudit = vi.fn().mockResolvedValue([]);
+
+      await expect(
+        analysisService.generateCommunicationBrief("u1", "STRATEGY", {
+          clientId: "client-1",
+          campaignGoal: "Goal",
+          segment: "VIP",
+          requestId: "brief-req-3",
+        }),
+      ).rejects.toThrow(AnalysisDomainError);
+
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "content.communication_brief.forbidden_attempt",
+          requestId: "brief-req-3",
+        }),
+      );
     });
   });
 });

@@ -222,6 +222,33 @@ export const generateSegmentProposalSchema = z.object({
 export const getLatestSegmentProposalSchema = z.object({
   clientId: z.string().cuid(),
 });
+export const communicationBriefStatusSchema = z.enum([
+  "ok",
+  "missing_required_fields",
+]);
+export const communicationBriefSchema = z.object({
+  clientId: z.string().cuid(),
+  version: z.number().int().positive(),
+  status: communicationBriefStatusSchema,
+  campaignGoal: z.string().min(1),
+  segment: z.string().min(1),
+  tone: z.string().min(1),
+  priority: z.string().min(1),
+  kpi: z.string().min(1),
+  requestId: z.string().min(1),
+  strategyRequestId: z.string().min(1),
+  generatedAt: z.date(),
+  missingFields: z.array(z.string().min(1)).default([]),
+});
+export const generateCommunicationBriefSchema = z.object({
+  clientId: z.string().cuid(),
+  campaignGoal: z.string().min(1).optional(),
+  segment: z.string().min(1).optional(),
+  requestId: z.string().min(1).optional(),
+});
+export const getLatestCommunicationBriefSchema = z.object({
+  clientId: z.string().cuid(),
+});
 
 export type GetOptimizationAreasSchema = z.infer<typeof getOptimizationAreasSchema>;
 export type GetContextInsightsSchema = z.infer<typeof getContextInsightsSchema>;
@@ -233,6 +260,8 @@ export type GenerateCampaignCalendarSchema = z.infer<typeof generateCampaignCale
 export type GetLatestCampaignCalendarSchema = z.infer<typeof getLatestCampaignCalendarSchema>;
 export type GenerateSegmentProposalSchema = z.infer<typeof generateSegmentProposalSchema>;
 export type GetLatestSegmentProposalSchema = z.infer<typeof getLatestSegmentProposalSchema>;
+export type GenerateCommunicationBriefSchema = z.infer<typeof generateCommunicationBriefSchema>;
+export type GetLatestCommunicationBriefSchema = z.infer<typeof getLatestCommunicationBriefSchema>;
 
 export const syncNowSchema = z.object({
   clientId: z.string().cuid(),
@@ -305,3 +334,5 @@ export type CampaignCalendar = z.infer<typeof campaignCalendarSchema>;
 export type SegmentProposalStatus = z.infer<typeof segmentProposalStatusSchema>;
 export type SegmentProposalItem = z.infer<typeof segmentProposalItemSchema>;
 export type SegmentProposal = z.infer<typeof segmentProposalSchema>;
+export type CommunicationBriefStatus = z.infer<typeof communicationBriefStatusSchema>;
+export type CommunicationBrief = z.infer<typeof communicationBriefSchema>;
