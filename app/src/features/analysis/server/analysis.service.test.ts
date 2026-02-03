@@ -3503,4 +3503,89 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.result.deprecatedRecommendationIds).toHaveLength(0);
     });
   });
+
+  describe("AI achievements report (Story 7.5)", () => {
+    it("returns aggregated AI learning metrics with export links", async () => {
+      const now = new Date("2026-02-25T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "campaign-1",
+          requestId: "campaign-1",
+          eventName: "campaign.performance.reported",
+          createdAt: now,
+          actorId: "u1",
+          details: { openRate: 54, clickRate: 18, revenue: 1200, conversions: 25 },
+        },
+        {
+          id: "feedback-1",
+          requestId: "feedback-1",
+          eventName: "feedback.recommendation.submitted",
+          createdAt: now,
+          actorId: "u1",
+          details: { sourceRequestId: "campaign-1", rating: 4, comment: "dobre CTA" },
+        },
+        {
+          id: "recommendation-update-1",
+          requestId: "recommendation-update-1",
+          eventName: "strategy.recommendation.updated",
+          createdAt: now,
+          actorId: "u1",
+          details: { current: { version: 2 } },
+        },
+      ]);
+      mockDocumentationExportAdapter.exportToNotion = vi.fn().mockResolvedValue({
+        documentUrl: "https://www.notion.so/ai-achievements-test",
+      });
+
+      const result = await analysisService.getAIAchievementsReport("u1", "OWNER", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.status).toBe("ok");
+      expect(result.data.reportData.campaignsAnalyzed).toBe(1);
+      expect(result.data.reportData.recommendationsUpdated).toBe(1);
+      expect(result.data.reportData.avgPerformanceScore).toBeGreaterThan(0);
+      expect(result.data.reportData.avgFeedbackScore).toBeGreaterThan(0);
+      expect(result.data.exportLinks.notion).toContain("notion.so");
+      expect(result.data.exportLinks.pdf).toContain(".pdf");
+    });
+
+    it("returns insufficient_data when campaign or feedback data are missing", async () => {
+      const now = new Date("2026-02-25T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.listLatestClientAuditLogs = vi.fn().mockResolvedValue([
+        {
+          id: "recommendation-update-1",
+          requestId: "recommendation-update-1",
+          eventName: "strategy.recommendation.updated",
+          createdAt: now,
+          actorId: "u1",
+          details: { current: { version: 2 } },
+        },
+      ]);
+      mockDocumentationExportAdapter.exportToNotion = vi.fn().mockResolvedValue({
+        documentUrl: "https://www.notion.so/ai-achievements-test",
+      });
+
+      const result = await analysisService.getAIAchievementsReport("u1", "STRATEGY", {
+        clientId: "client-1",
+        rangeStart: new Date("2026-02-01T00:00:00.000Z"),
+        rangeEnd: new Date("2026-02-28T23:59:59.000Z"),
+      });
+
+      expect(result.data.status).toBe("insufficient_data");
+      expect(result.data.reportData.campaignsAnalyzed).toBe(0);
+      expect(result.data.reportData.avgPerformanceScore).toBe(0);
+      expect(result.data.reportData.avgFeedbackScore).toBe(0);
+    });
+  });
 });

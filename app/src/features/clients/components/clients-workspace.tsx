@@ -42,6 +42,7 @@ import { ProductCoverageAnalysisCard } from "~/features/analysis/components/prod
 import { CommunicationImprovementRecommendationsCard } from "~/features/analysis/components/communication-improvement-recommendations-card";
 import { CampaignEffectivenessAnalysisCard } from "~/features/analysis/components/campaign-effectiveness-analysis-card";
 import { StrategyKPIAnalysisCard } from "~/features/analysis/components/strategy-kpi-analysis-card";
+import { AIAchievementsReportCard } from "~/features/analysis/components/ai-achievements-report-card";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -136,6 +137,11 @@ export function ClientsWorkspace() {
   const [strategyKpiError, setStrategyKpiError] = useState<string | null>(null);
   const [strategyKpiLoading, setStrategyKpiLoading] = useState(false);
   const [strategyKpiRefreshing, setStrategyKpiRefreshing] = useState(false);
+  const [aiAchievementsError, setAiAchievementsError] = useState<string | null>(null);
+  const [aiAchievementsLoading, setAiAchievementsLoading] = useState(false);
+  const [aiAchievementsRefreshing, setAiAchievementsRefreshing] = useState(false);
+  const [aiAchievementsExporting, setAiAchievementsExporting] = useState(false);
+  const [aiAchievementsExportTarget, setAiAchievementsExportTarget] = useState<"pdf" | "notion">("pdf");
 
   const utils = api.useUtils();
 
@@ -364,6 +370,17 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const aiAchievementsReportQuery = api.analysis.getAIAchievementsReport.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+      rangeStart: campaignEffectivenessRange.rangeStart,
+      rangeEnd: campaignEffectivenessRange.rangeEnd,
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const updateStrategyRecommendationsMutation = api.analysis.updateStrategyRecommendations.useMutation();
   const submitArtifactFeedbackMutation = api.analysis.submitArtifactFeedback.useMutation();
   const generateImplementationChecklistMutation = api.analysis.generateImplementationChecklist.useMutation();
@@ -447,6 +464,7 @@ export function ClientsWorkspace() {
       utils.analysis.getCommunicationImprovementRecommendations.invalidate(),
       utils.analysis.getCampaignEffectivenessAnalysis.invalidate(),
       utils.analysis.getStrategyKPIAnalysis.invalidate(),
+      utils.analysis.getAIAchievementsReport.invalidate(),
     ]);
   };
 
@@ -1100,6 +1118,30 @@ export function ClientsWorkspace() {
     setStrategyKpiError(null);
   }, [strategyKpiQuery.isLoading, strategyKpiQuery.isError, strategyKpiQuery.error]);
 
+  useEffect(() => {
+    if (aiAchievementsReportQuery.isLoading) {
+      setAiAchievementsLoading(true);
+      setAiAchievementsError(null);
+      return;
+    }
+
+    if (aiAchievementsReportQuery.isError) {
+      setAiAchievementsLoading(false);
+      const requestId = extractRequestId(aiAchievementsReportQuery.error);
+      setAiAchievementsError(
+        withRequestId("Nie udalo sie pobrac raportu postepu AI.", requestId),
+      );
+      return;
+    }
+
+    setAiAchievementsLoading(false);
+    setAiAchievementsError(null);
+  }, [
+    aiAchievementsReportQuery.isLoading,
+    aiAchievementsReportQuery.isError,
+    aiAchievementsReportQuery.error,
+  ]);
+
   const generateFlowPlan = async () => {
     if (!activeClientId) {
       setFlowPlanError("Najpierw ustaw aktywny kontekst klienta.");
@@ -1464,6 +1506,51 @@ export function ClientsWorkspace() {
       );
     } finally {
       setStrategyKpiRefreshing(false);
+    }
+  };
+
+  const refreshAIAchievementsReport = async () => {
+    if (!activeClientId) {
+      setAiAchievementsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setAiAchievementsRefreshing(true);
+    try {
+      await aiAchievementsReportQuery.refetch();
+      setAiAchievementsError(null);
+    } catch (error) {
+      setAiAchievementsError(
+        withRequestId("Nie udalo sie odswiezyc raportu postepu AI.", extractRequestId(error)),
+      );
+    } finally {
+      setAiAchievementsRefreshing(false);
+    }
+  };
+
+  const exportAIAchievementsReport = async () => {
+    if (!activeClientId) {
+      setAiAchievementsError("Najpierw ustaw aktywny kontekst klienta.");
+      return;
+    }
+
+    setAiAchievementsExporting(true);
+    try {
+      const result = await aiAchievementsReportQuery.refetch();
+      const links = result.data?.data.exportLinks;
+      const url =
+        aiAchievementsExportTarget === "pdf" ? links?.pdf : links?.notion;
+      if (!url) {
+        throw new Error("AI_ACHIEVEMENTS_EXPORT_URL_MISSING");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+      setAiAchievementsError(null);
+    } catch (error) {
+      setAiAchievementsError(
+        withRequestId("Nie udalo sie wyeksportowac raportu postepu AI.", extractRequestId(error)),
+      );
+    } finally {
+      setAiAchievementsExporting(false);
     }
   };
 
@@ -1867,6 +1954,23 @@ export function ClientsWorkspace() {
             }
             analysis={strategyKpiQuery.data?.data.analysis ?? null}
             onRefresh={refreshStrategyKpiAnalysis}
+          />
+        </div>
+        <div className="mt-4">
+          <AIAchievementsReportCard
+            loading={aiAchievementsLoading}
+            refreshing={aiAchievementsRefreshing}
+            exporting={aiAchievementsExporting}
+            error={aiAchievementsError}
+            requestId={
+              aiAchievementsReportQuery.data?.meta.requestId ??
+              extractRequestId(aiAchievementsReportQuery.error)
+            }
+            report={aiAchievementsReportQuery.data?.data ?? null}
+            exportTarget={aiAchievementsExportTarget}
+            onRefresh={refreshAIAchievementsReport}
+            onExportTargetChange={setAiAchievementsExportTarget}
+            onExport={exportAIAchievementsReport}
           />
         </div>
         </div>

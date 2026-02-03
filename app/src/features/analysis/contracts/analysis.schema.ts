@@ -643,6 +643,31 @@ export const updateStrategyRecommendationsResultSchema = z.object({
   deprecatedRecommendationIds: z.array(z.string().min(1)),
   activeRecommendations: z.array(updatedStrategyRecommendationSchema),
 });
+export const aiAchievementsReportStatusSchema = z.enum([
+  "ok",
+  "insufficient_data",
+]);
+export const aiAchievementsExportUrlsSchema = z.object({
+  pdf: z.string().url(),
+  notion: z.string().url(),
+});
+export const aiAchievementsReportDataSchema = z.object({
+  campaignsAnalyzed: z.number().int().min(0),
+  recommendationsUpdated: z.number().int().min(0),
+  avgPerformanceScore: z.number().min(0).max(100),
+  avgFeedbackScore: z.number().min(0).max(100),
+  insights: z.array(z.string().min(1)),
+});
+export const getAIAchievementsReportResponseSchema = z.object({
+  reportData: aiAchievementsReportDataSchema,
+  status: aiAchievementsReportStatusSchema,
+  exportLinks: aiAchievementsExportUrlsSchema,
+});
+export const getAIAchievementsReportSchema = z.object({
+  clientId: z.string().cuid(),
+  rangeStart: z.coerce.date(),
+  rangeEnd: z.coerce.date(),
+});
 export const artifactFeedbackTargetTypeSchema = z.enum([
   "recommendation",
   "draft",
@@ -698,6 +723,7 @@ export type GetCommunicationImprovementRecommendationsSchema = z.infer<typeof ge
 export type GetCampaignEffectivenessAnalysisSchema = z.infer<typeof getCampaignEffectivenessAnalysisSchema>;
 export type GetStrategyKPIAnalysisSchema = z.infer<typeof getStrategyKPIAnalysisSchema>;
 export type UpdateStrategyRecommendationsSchema = z.infer<typeof updateStrategyRecommendationsSchema>;
+export type GetAIAchievementsReportSchema = z.infer<typeof getAIAchievementsReportSchema>;
 export type SubmitArtifactFeedbackSchema = z.infer<typeof submitArtifactFeedbackSchema>;
 
 export const syncNowSchema = z.object({
@@ -811,5 +837,9 @@ export type StrategyKPIAnalysis = z.infer<typeof strategyKPIAnalysisSchema>;
 export type UpdateStrategyRecommendationsResultStatus = z.infer<typeof updateStrategyRecommendationsResultStatusSchema>;
 export type UpdatedStrategyRecommendation = z.infer<typeof updatedStrategyRecommendationSchema>;
 export type UpdateStrategyRecommendationsResult = z.infer<typeof updateStrategyRecommendationsResultSchema>;
+export type AIAchievementsReportStatus = z.infer<typeof aiAchievementsReportStatusSchema>;
+export type AIAchievementsReportData = z.infer<typeof aiAchievementsReportDataSchema>;
+export type AIAchievementsExportUrls = z.infer<typeof aiAchievementsExportUrlsSchema>;
+export type AIAchievementsReportResponse = z.infer<typeof getAIAchievementsReportResponseSchema>;
 export type ArtifactFeedbackTargetType = z.infer<typeof artifactFeedbackTargetTypeSchema>;
 export type ArtifactFeedback = z.infer<typeof artifactFeedbackSchema>;

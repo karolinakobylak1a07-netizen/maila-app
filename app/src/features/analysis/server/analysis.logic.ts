@@ -630,6 +630,32 @@ export interface UpdateStrategyRecommendationsOutput {
   };
 }
 
+export interface GetAIAchievementsReportInput {
+  clientId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+}
+
+export interface GetAIAchievementsReportOutput {
+  data: {
+    reportData: {
+      campaignsAnalyzed: number;
+      recommendationsUpdated: number;
+      avgPerformanceScore: number;
+      avgFeedbackScore: number;
+      insights: string[];
+    };
+    status: "ok" | "insufficient_data";
+    exportLinks: {
+      pdf: string;
+      notion: string;
+    };
+  };
+  meta: {
+    requestId: string;
+  };
+}
+
 export interface SubmitArtifactFeedbackInput {
   clientId: string;
   targetType: "recommendation" | "draft";
@@ -3003,6 +3029,140 @@ export class AnalysisService {
     };
   }
 
+  async getAIAchievementsReport(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetAIAchievementsReportInput,
+  ): Promise<GetAIAchievementsReportOutput> {
+    const requestId = `ai-achievements-report-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    if (input.rangeStart.getTime() > input.rangeEnd.getTime()) {
+      throw new AnalysisDomainError(
+        "validation",
+        "INVALID_DATE_RANGE",
+        {
+          rangeStart: input.rangeStart.toISOString(),
+          rangeEnd: input.rangeEnd.toISOString(),
+        },
+        requestId,
+      );
+    }
+
+    const logs = await this.repository.listLatestClientAuditLogs(input.clientId, 500);
+    const logsInRange = logs.filter(
+      (log) =>
+        log.createdAt.getTime() >= input.rangeStart.getTime() &&
+        log.createdAt.getTime() <= input.rangeEnd.getTime(),
+    );
+
+    const campaignLogs = logsInRange.filter(
+      (log) => log.eventName === "campaign.performance.reported",
+    );
+    const feedbackLogs = logsInRange.filter(
+      (log) =>
+        log.eventName === "feedback.recommendation.submitted" ||
+        log.eventName === "feedback.draft.submitted",
+    );
+    const updatedRecommendationLogs = logsInRange.filter(
+      (log) => log.eventName === "strategy.recommendation.updated",
+    );
+
+    const campaignScores = campaignLogs
+      .map((log) => this.parseCampaignPerformanceMetrics(log.details))
+      .filter((metrics): metrics is NonNullable<typeof metrics> => metrics !== null)
+      .map((metrics) =>
+        this.computePerformanceScore({
+          campaignCount: 1,
+          openRate: metrics.openRate,
+          clickRate: metrics.clickRate,
+          revenue: metrics.revenue,
+          conversions: metrics.conversions,
+        }),
+      );
+    const avgPerformanceScore =
+      campaignScores.length > 0
+        ? Number(
+            (
+              campaignScores.reduce((acc, score) => acc + score, 0) /
+              campaignScores.length
+            ).toFixed(2),
+          )
+        : 0;
+
+    const feedbackMetrics = this.aggregateFeedbackMetrics(feedbackLogs);
+    const avgFeedbackScore = this.computeFeedbackScore(
+      feedbackMetrics.averageRating,
+      feedbackMetrics.feedbackCount,
+    );
+
+    const feedbackSourceRequestIds = new Set(
+      feedbackLogs
+        .map((log) => {
+          if (!log.details || typeof log.details !== "object") {
+            return null;
+          }
+          const sourceRequestId = (log.details as Record<string, unknown>).sourceRequestId;
+          return typeof sourceRequestId === "string" ? sourceRequestId : null;
+        })
+        .filter((value): value is string => value !== null),
+    );
+    const campaignsAnalyzed = campaignLogs.filter((log) =>
+      feedbackSourceRequestIds.has(log.requestId),
+    ).length;
+
+    const recommendationsUpdated = updatedRecommendationLogs.length;
+    const hasData = campaignScores.length > 0 && feedbackMetrics.feedbackCount > 0;
+    const status: "ok" | "insufficient_data" = hasData ? "ok" : "insufficient_data";
+
+    const insights = this.buildAIAchievementsInsights({
+      avgPerformanceScore,
+      avgFeedbackScore,
+      recommendationsUpdated,
+      campaignCount: campaignScores.length,
+    });
+
+    const markdown = this.renderAIAchievementsMarkdown({
+      clientId: input.clientId,
+      requestId,
+      generatedAt: new Date(),
+      rangeStart: input.rangeStart,
+      rangeEnd: input.rangeEnd,
+      campaignsAnalyzed,
+      recommendationsUpdated,
+      avgPerformanceScore,
+      avgFeedbackScore,
+      insights,
+      status,
+    });
+
+    const notionUrl = await this.getNotionExportUrl({
+      clientId: input.clientId,
+      title: "AI Achievements Report",
+      markdown,
+      requestId,
+    });
+    const pdfUrl = `https://reports.ai/${this.slugify(`${input.clientId}-${requestId}-ai-achievements`)}.pdf`;
+
+    return {
+      data: {
+        reportData: {
+          campaignsAnalyzed,
+          recommendationsUpdated,
+          avgPerformanceScore,
+          avgFeedbackScore,
+          insights,
+        },
+        status,
+        exportLinks: {
+          pdf: pdfUrl,
+          notion: notionUrl,
+        },
+      },
+      meta: { requestId },
+    };
+  }
+
   async submitArtifactFeedback(
     userId: string,
     role: "OWNER" | "STRATEGY" | "CONTENT" | "OPERATIONS",
@@ -3217,6 +3377,93 @@ export class AnalysisService {
     }
 
     return 1;
+  }
+
+  private buildAIAchievementsInsights(input: {
+    avgPerformanceScore: number;
+    avgFeedbackScore: number;
+    recommendationsUpdated: number;
+    campaignCount: number;
+  }): string[] {
+    const insights: string[] = [];
+
+    if (input.campaignCount === 0) {
+      insights.push("Brak kampanii do analizy w wybranym zakresie.");
+      return insights;
+    }
+
+    if (input.avgFeedbackScore >= 70) {
+      insights.push("Najlepiej dzialaly rekomendacje z CTA o wysokiej jasnosci przekazu.");
+    } else {
+      insights.push("Rekomendacje wymagaja doprecyzowania CTA i headline, aby poprawic feedback.");
+    }
+
+    if (input.avgPerformanceScore >= 60) {
+      insights.push("Kampanie utrzymuja stabilny performance i moga byc skalowane.");
+    } else {
+      insights.push("Performance kampanii sugeruje potrzebe eksperymentow segmentu i tresci.");
+    }
+
+    if (input.recommendationsUpdated > 0) {
+      insights.push(
+        `AI zaktualizowala ${input.recommendationsUpdated} rekomendacji na podstawie KPI i feedbacku.`,
+      );
+    } else {
+      insights.push("Brak automatycznych aktualizacji rekomendacji w wybranym okresie.");
+    }
+
+    return insights;
+  }
+
+  private renderAIAchievementsMarkdown(input: {
+    clientId: string;
+    requestId: string;
+    generatedAt: Date;
+    rangeStart: Date;
+    rangeEnd: Date;
+    campaignsAnalyzed: number;
+    recommendationsUpdated: number;
+    avgPerformanceScore: number;
+    avgFeedbackScore: number;
+    insights: string[];
+    status: "ok" | "insufficient_data";
+  }) {
+    return [
+      "# AI Achievements Report",
+      "",
+      `- Client ID: ${input.clientId}`,
+      `- Request ID: ${input.requestId}`,
+      `- Generated at: ${input.generatedAt.toISOString()}`,
+      `- Range: ${input.rangeStart.toISOString()} → ${input.rangeEnd.toISOString()}`,
+      `- Status: ${input.status}`,
+      "",
+      "## Summary",
+      `- Campaigns analyzed with feedback: ${input.campaignsAnalyzed}`,
+      `- Recommendations updated: ${input.recommendationsUpdated}`,
+      `- Average performance score: ${input.avgPerformanceScore}`,
+      `- Average feedback score: ${input.avgFeedbackScore}`,
+      "",
+      "## Insights",
+      ...(input.insights.length > 0
+        ? input.insights.map((insight) => `- ${insight}`)
+        : ["- Brak insightow w wybranym zakresie."]),
+    ].join("\n");
+  }
+
+  private async getNotionExportUrl(payload: {
+    clientId: string;
+    title: string;
+    markdown: string;
+    requestId: string;
+  }) {
+    try {
+      const exported = await this.documentationExportAdapter.exportToNotion(payload);
+      return exported.documentUrl;
+    } catch {
+      return `https://www.notion.so/${this.slugify(
+        `${payload.clientId}-${payload.requestId}-${payload.title}`,
+      )}`;
+    }
   }
 
   private parseStrategyPerformanceRow(

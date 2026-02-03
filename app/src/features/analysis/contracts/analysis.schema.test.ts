@@ -69,6 +69,10 @@ import {
   updateStrategyRecommendationsSchema,
   updateStrategyRecommendationsResultSchema,
   updateStrategyRecommendationsResultStatusSchema,
+  aiAchievementsReportStatusSchema,
+  aiAchievementsReportDataSchema,
+  getAIAchievementsReportResponseSchema,
+  getAIAchievementsReportSchema,
   artifactFeedbackTargetTypeSchema,
   artifactFeedbackSchema,
   submitArtifactFeedbackSchema,
@@ -1037,6 +1041,44 @@ describe('OptimizationArea Schema', () => {
         updateStrategyRecommendationsSchema.safeParse({
           clientId: 'cm0000000000000000000000',
           threshold: 120,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('should parse AI achievements report payload and input', () => {
+      expect(aiAchievementsReportStatusSchema.safeParse('ok').success).toBe(true);
+      expect(aiAchievementsReportStatusSchema.safeParse('insufficient_data').success).toBe(true);
+
+      const dataResult = aiAchievementsReportDataSchema.safeParse({
+        campaignsAnalyzed: 12,
+        recommendationsUpdated: 4,
+        avgPerformanceScore: 71.2,
+        avgFeedbackScore: 78.5,
+        insights: ['Najlepiej dzialaly rekomendacje z CTA o wysokiej jasnosci przekazu.'],
+      });
+      expect(dataResult.success).toBe(true);
+
+      const responseResult = getAIAchievementsReportResponseSchema.safeParse({
+        reportData: {
+          campaignsAnalyzed: 12,
+          recommendationsUpdated: 4,
+          avgPerformanceScore: 71.2,
+          avgFeedbackScore: 78.5,
+          insights: ['Najlepiej dzialaly rekomendacje z CTA o wysokiej jasnosci przekazu.'],
+        },
+        status: 'ok',
+        exportLinks: {
+          pdf: 'https://reports.ai/test.pdf',
+          notion: 'https://www.notion.so/test',
+        },
+      });
+      expect(responseResult.success).toBe(true);
+
+      expect(
+        getAIAchievementsReportSchema.safeParse({
+          clientId: 'cm0000000000000000000000',
+          rangeStart: '2026-02-01T00:00:00.000Z',
+          rangeEnd: '2026-02-28T23:59:59.000Z',
         }).success,
       ).toBe(true);
     });
