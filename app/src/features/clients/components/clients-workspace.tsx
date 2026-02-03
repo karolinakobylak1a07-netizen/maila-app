@@ -28,6 +28,7 @@ import { ClientsWorkspaceView } from "~/features/clients/components/clients-work
 import { SyncStatusCard } from "~/features/analysis/components/sync-status";
 import { GapListCard } from "~/features/analysis/components/gap-list";
 import { OptimizationPrioritiesList } from "~/features/analysis/components/optimization-priorities-list";
+import { ContextInsightsList } from "~/features/analysis/components/context-insights-list";
 import { api } from "~/trpc/react";
 
 const extractErrorDetails = (error: unknown) => {
@@ -80,6 +81,8 @@ export function ClientsWorkspace() {
   const [gapForbidden, setGapForbidden] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string | null>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
+  const [contextInsightsError, setContextInsightsError] = useState<string | null>(null);
+  const [contextInsightsLoading, setContextInsightsLoading] = useState(false);
 
   const utils = api.useUtils();
 
@@ -146,6 +149,16 @@ export function ClientsWorkspace() {
       retry: false,
     },
   );
+  const contextInsightsQuery = api.analysis.getContextInsights.useQuery(
+    {
+      clientId: activeClientId ?? "000000000000000000000000",
+      limit: 5,
+    },
+    {
+      enabled: Boolean(activeClientId) && !gapForbidden,
+      retry: false,
+    },
+  );
   const syncNowMutation = api.analysis.syncNow.useMutation();
 
   const isSubmitting =
@@ -209,6 +222,7 @@ export function ClientsWorkspace() {
       utils.analysis.getSyncStatus.invalidate(),
       utils.analysis.getGapReport.invalidate(),
       utils.analysis.getOptimizationAreas.invalidate(),
+      utils.analysis.getContextInsights.invalidate(),
     ]);
   };
 
@@ -545,6 +559,29 @@ export function ClientsWorkspace() {
     }
   }, [optimizationQuery.isLoading, optimizationQuery.isError, optimizationQuery.error]);
 
+  useEffect(() => {
+    if (contextInsightsQuery.isLoading) {
+      setContextInsightsLoading(true);
+      setContextInsightsError(null);
+      return;
+    }
+
+    if (contextInsightsQuery.isError) {
+      setContextInsightsLoading(false);
+      const requestId = extractRequestId(contextInsightsQuery.error);
+      setContextInsightsError(
+        withRequestId(
+          "Nie udalo sie pobrac insightow kontekstowych.",
+          requestId,
+        ),
+      );
+      return;
+    }
+
+    setContextInsightsLoading(false);
+    setContextInsightsError(null);
+  }, [contextInsightsQuery.isLoading, contextInsightsQuery.isError, contextInsightsQuery.error]);
+
   const discoveryProgress = useMemo(() => {
     const fromLocal = evaluateDiscoveryCompleteness(discoveryAnswers);
     const fromServer = discoveryStateQuery.data?.data;
@@ -620,6 +657,23 @@ export function ClientsWorkspace() {
             missingData={optimizationQuery.data?.meta.missingData ?? []}
             optimizationAreas={optimizationQuery.data?.data.areas ?? []}
             summary={optimizationQuery.data?.data.summary ?? null}
+          />
+        </div>
+        <div className="mt-4">
+          <ContextInsightsList
+            loading={contextInsightsLoading}
+            error={contextInsightsError}
+            status={contextInsightsQuery.data?.meta.status ?? "empty"}
+            requestId={
+              contextInsightsQuery.data?.meta.requestId ??
+              extractRequestId(contextInsightsQuery.error)
+            }
+            lastSyncRequestId={
+              contextInsightsQuery.data?.meta.lastSyncRequestId ??
+              gapReportQuery.data?.meta?.lastSyncRequestId ??
+              null
+            }
+            insights={contextInsightsQuery.data?.data.insights ?? []}
           />
         </div>
         </div>

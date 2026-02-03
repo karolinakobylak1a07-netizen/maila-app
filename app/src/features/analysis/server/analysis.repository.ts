@@ -33,6 +33,16 @@ export type InventoryItemRecord = {
   lastSyncAt: Date;
 };
 
+export type DiscoveryContextRecord = {
+  goals: string[];
+};
+
+export type StrategicPriorityRecord = {
+  id: string;
+  content: string;
+  createdAt: Date;
+};
+
 export class AnalysisRepository {
   private readonly database: Database;
 
@@ -163,6 +173,44 @@ export class AnalysisRepository {
         name: true,
         itemStatus: true,
         lastSyncAt: true,
+      },
+    });
+  }
+
+  async findDiscoveryContext(clientId: string): Promise<DiscoveryContextRecord | null> {
+    const record = await this.database.discoveryOnboarding.findUnique({
+      where: { clientId },
+      include: {
+        answers: {
+          where: { questionKey: "goals" },
+          select: { answerText: true },
+          take: 1,
+        },
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    const goalsAnswer = record.answers[0]?.answerText ?? "";
+    const goals = goalsAnswer
+      .split(/\r?\n|[,;]+/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    return { goals };
+  }
+
+  listLatestStrategicPriorities(clientId: string, limit = 5): Promise<StrategicPriorityRecord[]> {
+    return this.database.strategicDecision.findMany({
+      where: { clientId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
       },
     });
   }

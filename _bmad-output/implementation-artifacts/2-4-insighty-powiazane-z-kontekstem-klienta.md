@@ -1,6 +1,6 @@
 # Story 2.4: Insighty powiazane z kontekstem klienta
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

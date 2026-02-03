@@ -19,6 +19,8 @@ describe("AnalysisService.getOptimizationAreas", () => {
       upsertInventoryItems: vi.fn(),
       createAuditLog: vi.fn(),
       listClientIds: vi.fn(),
+      findDiscoveryContext: vi.fn(),
+      listLatestStrategicPriorities: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -217,6 +219,126 @@ describe("AnalysisService.getOptimizationAreas", () => {
       );
       expect(result.data.requestId).toBe("req-sync-1");
       expect(result.data.status).toBe("OK");
+    });
+  });
+
+  describe("getContextInsights (Story 2.4)", () => {
+    it("returns status ok with context-linked actionable insights (AC1)", async () => {
+      const now = new Date("2026-02-02T12:00:00.000Z");
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-i-1",
+        startedAt: new Date("2026-02-01T12:00:00.000Z"),
+        flowCount: 3,
+        emailCount: 1,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "disabled", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f3", name: "Flow 3", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e1", name: "Email 1", itemStatus: "OK", lastSyncAt: now },
+      ]);
+      mockRepository.findDiscoveryContext = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+      });
+      mockRepository.listLatestStrategicPriorities = vi.fn().mockResolvedValue([
+        { id: "d1", content: "Priorytet retencyjny", createdAt: now },
+      ]);
+
+      const result = await analysisService.getContextInsights("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-insight-ok",
+        limit: 3,
+      });
+
+      expect(result.meta.status).toBe("ok");
+      expect(result.data.insights.length).toBeGreaterThan(0);
+      expect(result.data.insights.every((item) => item.status === "ok")).toBe(true);
+      expect(result.data.insights.every((item) => item.recommendedAction !== null)).toBe(true);
+      expect(result.data.insights[0]?.linkedClientGoals).toContain("Wzrost konwersji");
+
+      vi.useRealTimers();
+    });
+
+    it("returns draft_low_confidence with missingContext when client context is incomplete (AC2)", async () => {
+      const now = new Date("2026-02-02T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-i-2",
+        startedAt: new Date("2026-02-01T12:00:00.000Z"),
+        flowCount: 3,
+        emailCount: 0,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f3", name: "Flow 3", itemStatus: "GAP", lastSyncAt: now },
+      ]);
+      mockRepository.findDiscoveryContext = vi.fn().mockResolvedValue({ goals: [] });
+      mockRepository.listLatestStrategicPriorities = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.getContextInsights("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-insight-draft",
+        limit: 3,
+      });
+
+      expect(result.meta.status).toBe("draft_low_confidence");
+      expect(result.data.insights[0]?.missingContext).toContain("linkedClientGoals");
+      expect(result.data.insights[0]?.missingContext).toContain("linkedClientPriorities");
+      expect(result.data.insights[0]?.actionability).toBe("needs_human_validation");
+    });
+
+    it("returns source_conflict with null recommendation and conflict details (AC3)", async () => {
+      const now = new Date("2026-02-02T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-i-3",
+        startedAt: new Date("2026-02-01T12:00:00.000Z"),
+        flowCount: 1,
+        emailCount: 1,
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f3", name: "Flow 3", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e1", name: "Email 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e2", name: "Email 2", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e3", name: "Email 3", itemStatus: "GAP", lastSyncAt: now },
+      ]);
+      mockRepository.findDiscoveryContext = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+      });
+      mockRepository.listLatestStrategicPriorities = vi.fn().mockResolvedValue([
+        { id: "d1", content: "Priorytet retencyjny", createdAt: now },
+      ]);
+
+      const result = await analysisService.getContextInsights("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-insight-conflict",
+        limit: 3,
+      });
+
+      expect(result.meta.status).toBe("source_conflict");
+      expect(result.data.insights[0]?.status).toBe("source_conflict");
+      expect(result.data.insights[0]?.recommendedAction).toBeNull();
+      expect(result.data.insights[0]?.conflictDetails?.sourceA).toBe("sync_inventory");
+      expect(result.data.insights[0]?.conflictDetails?.sourceB).toBe("cached_insights");
     });
   });
 });

@@ -5,6 +5,10 @@ import {
   expectedImpactSchema,
   priorityLevelSchema,
   confidenceLevelSchema,
+  insightItemSchema,
+  insightStatusSchema,
+  insightActionabilitySchema,
+  getContextInsightsSchema,
 } from './analysis.schema';
 
 describe('OptimizationArea Schema', () => {
@@ -258,6 +262,54 @@ describe('OptimizationArea Schema', () => {
 
       const result = optimizationAreaSchema.safeParse(areaWithInvalidCategory);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('insight schemas', () => {
+    it('should accept insight statuses and actionability values', () => {
+      expect(insightStatusSchema.safeParse('ok').success).toBe(true);
+      expect(insightStatusSchema.safeParse('draft_low_confidence').success).toBe(true);
+      expect(insightStatusSchema.safeParse('source_conflict').success).toBe(true);
+      expect(insightActionabilitySchema.safeParse('actionable').success).toBe(true);
+      expect(insightActionabilitySchema.safeParse('needs_human_validation').success).toBe(true);
+    });
+
+    it('should parse valid InsightItem payload', () => {
+      const result = insightItemSchema.safeParse({
+        id: 'insight-1',
+        title: 'Priorytet 1',
+        rationale: 'Test rationale',
+        dataSources: [
+          {
+            sourceType: 'optimization_ranking',
+            observedAt: new Date('2026-02-01T12:00:00.000Z'),
+          },
+        ],
+        recommendedAction: 'Wdroz automatyzacje',
+        actionability: 'actionable',
+        confidence: 80,
+        status: 'ok',
+        linkedClientGoals: ['Wzrost konwersji'],
+        linkedClientPriorities: ['Priorytet Q1'],
+        missingContext: [],
+        requestId: 'req-1',
+        lastSyncRequestId: 'sync-1',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate getContextInsights input contract', () => {
+      const success = getContextInsightsSchema.safeParse({
+        clientId: 'cm0000000000000000000000',
+        limit: 5,
+      });
+      const fail = getContextInsightsSchema.safeParse({
+        clientId: 'not-a-cuid',
+      });
+
+      expect(success.success).toBe(true);
+      expect(fail.success).toBe(false);
     });
   });
 });

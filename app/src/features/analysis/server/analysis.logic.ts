@@ -2,6 +2,7 @@ import { AnalysisRepository } from "./analysis.repository";
 import { db } from "~/server/db";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
+  InsightItem,
   OptimizationArea,
   OptimizationStatus,
   PriorityLevel,
@@ -83,6 +84,24 @@ export interface GetOptimizationAreasOutput {
     missingData?: string[];
     dataIssue?: string;
     requestId: string;
+  };
+}
+
+export interface GetContextInsightsInput {
+  clientId: string;
+  requestId?: string;
+  limit?: number;
+}
+
+export interface GetContextInsightsOutput {
+  data: {
+    insights: InsightItem[];
+  };
+  meta: {
+    generatedAt: Date;
+    lastSyncRequestId: string;
+    requestId: string;
+    status: "ok" | "draft_low_confidence" | "source_conflict" | "empty";
   };
 }
 
@@ -218,6 +237,79 @@ export class AnalysisService {
         hasInsufficientData: false,
         hasTimedOut: false,
         requestId,
+      },
+    };
+  }
+
+  async getContextInsights(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetContextInsightsInput,
+  ): Promise<GetContextInsightsOutput> {
+    const requestId = input.requestId ?? `context-insights-${Date.now()}`;
+    const limit = input.limit ?? 5;
+
+    await this.validateAccess(userId, role, input.clientId);
+
+    const syncRun = await this.repository.findLatestSyncRun(input.clientId);
+    if (!syncRun) {
+      throw new AnalysisDomainError(
+        "validation",
+        "SYNC_REQUIRED_BEFORE_INSIGHTS",
+        { missingField: "syncRun" },
+        requestId,
+      );
+    }
+
+    const inventory = await this.repository.listInventory(input.clientId);
+    const rankedAreas = this.generateOptimizationAreas(inventory, requestId, syncRun);
+    const selectedAreas = rankedAreas.slice(0, limit);
+
+    const [discoveryContext, strategicPriorities] = await Promise.all([
+      this.repository.findDiscoveryContext(input.clientId),
+      this.repository.listLatestStrategicPriorities(input.clientId, 5),
+    ]);
+
+    const linkedClientGoals = discoveryContext?.goals ?? [];
+    const linkedClientPriorities = strategicPriorities
+      .map((decision) => decision.content.trim())
+      .filter((decision) => decision.length > 0);
+    const missingContext = this.collectMissingContext(
+      linkedClientGoals,
+      linkedClientPriorities,
+    );
+    const conflictDetails = this.detectSourceConflict(syncRun, inventory);
+
+    const status: "ok" | "draft_low_confidence" | "source_conflict" =
+      conflictDetails
+        ? "source_conflict"
+        : missingContext.length > 0
+          ? "draft_low_confidence"
+          : "ok";
+
+    const insights = selectedAreas.map((area, index) =>
+      this.mapAreaToInsight({
+        area,
+        requestId,
+        status,
+        missingContext,
+        conflictDetails,
+        linkedClientGoals,
+        linkedClientPriorities,
+        syncRun,
+        position: index + 1,
+      }),
+    );
+
+    return {
+      data: {
+        insights,
+      },
+      meta: {
+        generatedAt: new Date(),
+        lastSyncRequestId: syncRun.requestId,
+        requestId,
+        status: this.resolveInsightsMetaStatus(insights),
       },
     };
   }
@@ -509,6 +601,149 @@ export class AnalysisService {
         areas.reduce((sum, a) => sum + a.expectedImpact, 0) / areas.length,
       ),
     };
+  }
+
+  private collectMissingContext(
+    linkedClientGoals: string[],
+    linkedClientPriorities: string[],
+  ): string[] {
+    const missing: string[] = [];
+    if (linkedClientGoals.length === 0) {
+      missing.push("linkedClientGoals");
+    }
+    if (linkedClientPriorities.length === 0) {
+      missing.push("linkedClientPriorities");
+    }
+    return missing;
+  }
+
+  private detectSourceConflict(
+    syncRun: {
+      flowCount?: number | null;
+      emailCount?: number | null;
+      startedAt: Date;
+    },
+    inventory: Array<{ entityType: KlaviyoEntityType }>,
+  ): {
+    fields: string[];
+    sourceA: string;
+    sourceB: string;
+    reason: string;
+  } | undefined {
+    const inventoryFlowCount = inventory.filter((item) => item.entityType === "FLOW").length;
+    const inventoryEmailCount = inventory.filter((item) => item.entityType === "EMAIL").length;
+
+    const checks = [
+      {
+        field: "flowCount",
+        sourceAValue: syncRun.flowCount ?? 0,
+        sourceBValue: inventoryFlowCount,
+      },
+      {
+        field: "emailCount",
+        sourceAValue: syncRun.emailCount ?? 0,
+        sourceBValue: inventoryEmailCount,
+      },
+    ];
+
+    const conflictingFields = checks.filter((metric) => {
+      const maxBase = Math.max(metric.sourceAValue, metric.sourceBValue, 1);
+      const absoluteDelta = Math.abs(metric.sourceAValue - metric.sourceBValue);
+      const relativeDelta = absoluteDelta / maxBase;
+      const smallMetricConflict = maxBase <= 5 && absoluteDelta > 2;
+      return relativeDelta > 0.2 || smallMetricConflict;
+    });
+
+    if (conflictingFields.length === 0) {
+      return undefined;
+    }
+
+    const fields = conflictingFields.map((item) => item.field);
+    const daysAgo = Math.floor((Date.now() - syncRun.startedAt.getTime()) / (1000 * 60 * 60 * 24));
+    const windowLabel = daysAgo > 30 ? "last_30_days" : "last_sync_window";
+
+    return {
+      fields,
+      sourceA: "sync_inventory",
+      sourceB: "cached_insights",
+      reason: `delta > threshold (${windowLabel}, rel>20% or abs>2 for small metrics)`,
+    };
+  }
+
+  private mapAreaToInsight(payload: {
+    area: OptimizationArea;
+    requestId: string;
+    status: "ok" | "draft_low_confidence" | "source_conflict";
+    missingContext: string[];
+    conflictDetails?:
+      | {
+          fields: string[];
+          sourceA: string;
+          sourceB: string;
+          reason: string;
+        }
+      | undefined;
+    linkedClientGoals: string[];
+    linkedClientPriorities: string[];
+    syncRun: { requestId: string; startedAt: Date };
+    position: number;
+  }): InsightItem {
+    const { area, requestId, status, missingContext, conflictDetails } = payload;
+    const isConflict = status === "source_conflict";
+    const isDraft = status === "draft_low_confidence";
+
+    return {
+      id: `${requestId}-${payload.position}`,
+      title: `Priorytet ${payload.position}: ${area.name}`,
+      rationale: isConflict
+        ? `Wykryto konflikt zrodel dla metryk (${(conflictDetails?.fields ?? []).join(", ")}). Wymagana walidacja czlowieka.`
+        : `Obszar ${area.category} ma priorytet ${area.priority} oraz oczekiwany efekt ${area.expectedImpact}%.`,
+      dataSources: [
+        {
+          sourceType: "optimization_ranking",
+          sourceId: area.source,
+          observedAt: new Date(),
+          metricKey: "expectedImpact",
+          metricValue: area.expectedImpact,
+        },
+        {
+          sourceType: "sync_inventory",
+          sourceId: payload.syncRun.requestId,
+          observedAt: payload.syncRun.startedAt,
+          metricKey: "confidence",
+          metricValue: area.confidence,
+        },
+      ],
+      recommendedAction: isConflict
+        ? null
+        : isDraft
+          ? `Wstepna rekomendacja: zweryfikuj "${area.name}" po uzupelnieniu kontekstu (${missingContext.join(", ")}).`
+          : `Uruchom plan optymalizacji dla "${area.name}" i przypisz odpowiedzialnego za wdrozenie.`,
+      actionability: isConflict ? "needs_human_validation" : isDraft ? "needs_human_validation" : "actionable",
+      confidence: area.confidence,
+      status,
+      linkedClientGoals: payload.linkedClientGoals,
+      linkedClientPriorities: payload.linkedClientPriorities,
+      missingContext,
+      conflictDetails,
+      requestId,
+      lastSyncRequestId: payload.syncRun.requestId,
+    };
+  }
+
+  private resolveInsightsMetaStatus(
+    insights: InsightItem[],
+  ): "ok" | "draft_low_confidence" | "source_conflict" | "empty" {
+    if (insights.length === 0) {
+      return "empty";
+    }
+    if (insights.some((item) => item.status === "source_conflict")) {
+      return "source_conflict";
+    }
+    if (insights.some((item) => item.status === "draft_low_confidence")) {
+      return "draft_low_confidence";
+    }
+    return "ok";
   }
 
   async getGapReport(

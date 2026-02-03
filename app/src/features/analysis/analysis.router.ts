@@ -5,13 +5,14 @@ import {
   getSyncStatusSchema,
   syncNowSchema,
   getOptimizationAreasSchema,
+  getContextInsightsSchema,
 } from "./contracts/analysis.schema";
 import { assertSessionRole, mapAnalysisErrorToTRPC } from "./analysis.router.logic";
 import { AnalysisService } from "./server/analysis.service";
 
 type AnalysisServiceContract = Pick<
   AnalysisService,
-  "getGapReport" | "getSyncStatus" | "runSync" | "getOptimizationAreas"
+  "getGapReport" | "getSyncStatus" | "runSync" | "getOptimizationAreas" | "getContextInsights"
 >;
 
 export const createAnalysisRouter = (
@@ -78,6 +79,20 @@ export const createAnalysisRouter = (
               limit: input.limit,
               showPartialOnTimeout: input.showPartialOnTimeout,
             },
+          );
+        } catch (error) {
+          mapAnalysisErrorToTRPC(error);
+        }
+      }),
+
+    getContextInsights: protectedProcedure
+      .input(getContextInsightsSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await analysisService.getContextInsights(
+            ctx.session.user.id,
+            assertSessionRole(ctx.session.user.role) as "OWNER" | "STRATEGY",
+            input,
           );
         } catch (error) {
           mapAnalysisErrorToTRPC(error);
