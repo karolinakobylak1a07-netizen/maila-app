@@ -2,6 +2,7 @@ import { AnalysisRepository } from "./analysis.repository";
 import { db } from "~/server/db";
 import type { KlaviyoEntityType } from "../contracts/analysis.schema";
 import type {
+  EmailStrategy,
   InsightItem,
   OptimizationArea,
   OptimizationStatus,
@@ -102,6 +103,34 @@ export interface GetContextInsightsOutput {
     lastSyncRequestId: string;
     requestId: string;
     status: "ok" | "draft_low_confidence" | "source_conflict" | "empty";
+  };
+}
+
+export interface GenerateEmailStrategyInput {
+  clientId: string;
+  requestId?: string;
+}
+
+export interface GetLatestEmailStrategyInput {
+  clientId: string;
+}
+
+export interface GenerateEmailStrategyOutput {
+  data: {
+    strategy: EmailStrategy;
+  };
+  meta: {
+    generatedAt: Date;
+    requestId: string;
+  };
+}
+
+export interface GetLatestEmailStrategyOutput {
+  data: {
+    strategy: EmailStrategy | null;
+  };
+  meta: {
+    requestId: string;
   };
 }
 
@@ -310,6 +339,184 @@ export class AnalysisService {
         lastSyncRequestId: syncRun.requestId,
         requestId,
         status: this.resolveInsightsMetaStatus(insights),
+      },
+    };
+  }
+
+  async generateEmailStrategy(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GenerateEmailStrategyInput,
+  ): Promise<GenerateEmailStrategyOutput> {
+    const requestId = input.requestId ?? `strategy-generate-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+
+    const syncRun = await this.repository.findLatestSyncRun(input.clientId);
+    const discovery = await this.repository.findDiscoveryAnswers(input.clientId);
+    const preconditions: Array<
+      "discovery.goals" | "discovery.segments" | "audit.sync_ok" | "audit.optimization_available"
+    > = [];
+
+    if (!discovery || discovery.goals.length === 0) {
+      preconditions.push("discovery.goals");
+    }
+    if (!discovery || discovery.segments.length === 0) {
+      preconditions.push("discovery.segments");
+    }
+    if (!syncRun || syncRun.status !== "OK") {
+      preconditions.push("audit.sync_ok");
+    }
+
+    const optimizationAreas =
+      syncRun && syncRun.status === "OK"
+        ? this.generateOptimizationAreas(
+            await this.repository.listInventory(input.clientId),
+            requestId,
+            syncRun,
+          )
+        : [];
+    if (optimizationAreas.length === 0) {
+      preconditions.push("audit.optimization_available");
+    }
+
+    const existingRecords = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
+    const latest = this.parseLatestEmailStrategy(existingRecords);
+    const nextVersion = (latest?.version ?? 0) + 1;
+
+    if (preconditions.length > 0) {
+      const blocked = this.buildEmailStrategyRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "blocked_preconditions",
+        goals: discovery?.goals ?? [],
+        segments: discovery?.segments ?? [],
+        tone: discovery?.brandTone ?? "manual_validation_required",
+        priorities: [],
+        kpis: discovery?.primaryKpis ?? [],
+        requestId,
+        lastSyncRequestId: syncRun?.requestId ?? "missing-sync",
+        missingPreconditions: preconditions,
+      });
+
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "strategy.email.generated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: {
+          status: "blocked_preconditions",
+          clientId: input.clientId,
+          missingPreconditions: blocked.missingPreconditions,
+          requestId,
+          timestamp: blocked.generatedAt.toISOString(),
+        },
+      });
+
+      return {
+        data: { strategy: blocked },
+        meta: { generatedAt: blocked.generatedAt, requestId },
+      };
+    }
+
+    const insightsResult = await this.getContextInsights(userId, role, {
+      clientId: input.clientId,
+      requestId,
+      limit: 5,
+    });
+    const insights = insightsResult.data.insights;
+    const estimatedCostMs = optimizationAreas.length * 100;
+
+    if (estimatedCostMs > 700) {
+      const resumable = existingRecords
+        .map((record) => this.parseEmailStrategy(record.details))
+        .find(
+          (record): record is EmailStrategy =>
+            record !== null &&
+            record.status === "in_progress_or_timeout" &&
+            record.lastSyncRequestId === syncRun!.requestId,
+        );
+
+      if (resumable) {
+        return {
+          data: { strategy: resumable },
+          meta: { generatedAt: resumable.generatedAt, requestId: resumable.requestId },
+        };
+      }
+
+      const timedOut = this.buildEmailStrategyRecord({
+        clientId: input.clientId,
+        version: nextVersion,
+        status: "in_progress_or_timeout",
+        goals: discovery!.goals,
+        segments: discovery!.segments,
+        tone: discovery!.brandTone ?? "manual_validation_required",
+        priorities: insights.slice(0, 3).map((insight) => insight.title),
+        kpis: discovery!.primaryKpis,
+        requestId,
+        lastSyncRequestId: syncRun!.requestId,
+        retryHint: "Retry generateEmailStrategy for the same client and sync snapshot.",
+      });
+
+      await this.repository.createAuditLog({
+        actorId: userId,
+        eventName: "strategy.email.generated",
+        requestId,
+        entityType: "CLIENT",
+        entityId: input.clientId,
+        details: timedOut,
+      });
+
+      return {
+        data: { strategy: timedOut },
+        meta: { generatedAt: timedOut.generatedAt, requestId },
+      };
+    }
+
+    const strategy = this.buildEmailStrategyRecord({
+      clientId: input.clientId,
+      version: nextVersion,
+      status: "ok",
+      goals: discovery!.goals,
+      segments: discovery!.segments,
+      tone: discovery!.brandTone ?? "ekspercki i konkretny",
+      priorities: insights.slice(0, 3).map((insight) => insight.title),
+      kpis: discovery!.primaryKpis.length > 0 ? discovery!.primaryKpis : ["conversion_rate", "retention_rate"],
+      requestId,
+      lastSyncRequestId: syncRun!.requestId,
+    });
+
+    await this.repository.createAuditLog({
+      actorId: userId,
+      eventName: "strategy.email.generated",
+      requestId,
+      entityType: "CLIENT",
+      entityId: input.clientId,
+      details: strategy,
+    });
+
+    return {
+      data: { strategy },
+      meta: { generatedAt: strategy.generatedAt, requestId },
+    };
+  }
+
+  async getLatestEmailStrategy(
+    userId: string,
+    role: "OWNER" | "STRATEGY",
+    input: GetLatestEmailStrategyInput,
+  ): Promise<GetLatestEmailStrategyOutput> {
+    const requestId = `strategy-latest-${Date.now()}`;
+    await this.validateAccess(userId, role, input.clientId);
+    const records = await this.repository.listLatestEmailStrategyAudit(input.clientId, 20);
+    const strategy = this.parseLatestEmailStrategy(records) ?? null;
+
+    return {
+      data: {
+        strategy,
+      },
+      meta: {
+        requestId,
       },
     };
   }
@@ -601,6 +808,112 @@ export class AnalysisService {
         areas.reduce((sum, a) => sum + a.expectedImpact, 0) / areas.length,
       ),
     };
+  }
+
+  private buildEmailStrategyRecord(payload: {
+    clientId: string;
+    version: number;
+    status: "ok" | "in_progress_or_timeout" | "blocked_preconditions";
+    goals: string[];
+    segments: string[];
+    tone: string;
+    priorities: string[];
+    kpis: string[];
+    requestId: string;
+    lastSyncRequestId: string;
+    missingPreconditions?: Array<
+      "discovery.goals" | "discovery.segments" | "audit.sync_ok" | "audit.optimization_available"
+    >;
+    retryHint?: string;
+  }): EmailStrategy {
+    return {
+      clientId: payload.clientId,
+      version: payload.version,
+      status: payload.status,
+      goals: payload.goals,
+      segments: payload.segments,
+      tone: payload.tone,
+      priorities: payload.priorities,
+      kpis: payload.kpis,
+      requestId: payload.requestId,
+      lastSyncRequestId: payload.lastSyncRequestId,
+      generatedAt: new Date(),
+      missingPreconditions: payload.missingPreconditions ?? [],
+      retryHint: payload.retryHint,
+    };
+  }
+
+  private parseEmailStrategy(details: unknown): EmailStrategy | null {
+    if (!details || typeof details !== "object") {
+      return null;
+    }
+
+    const value = details as Partial<EmailStrategy>;
+    if (
+      typeof value.clientId !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.status !== "string" ||
+      !Array.isArray(value.goals) ||
+      !Array.isArray(value.segments) ||
+      typeof value.tone !== "string" ||
+      !Array.isArray(value.priorities) ||
+      !Array.isArray(value.kpis) ||
+      typeof value.requestId !== "string" ||
+      typeof value.lastSyncRequestId !== "string"
+    ) {
+      return null;
+    }
+
+    const allowedStatuses = ["ok", "in_progress_or_timeout", "blocked_preconditions"] as const;
+    const isAllowedStatus = (item: unknown): item is (typeof allowedStatuses)[number] =>
+      typeof item === "string" && (allowedStatuses as readonly string[]).includes(item);
+    if (!isAllowedStatus(value.status)) {
+      return null;
+    }
+    const allowedPreconditions = [
+      "discovery.goals",
+      "discovery.segments",
+      "audit.sync_ok",
+      "audit.optimization_available",
+    ] as const;
+
+    const isAllowedPrecondition = (
+      item: unknown,
+    ): item is (typeof allowedPreconditions)[number] =>
+      typeof item === "string" && (allowedPreconditions as readonly string[]).includes(item);
+
+    return {
+      clientId: value.clientId,
+      version: value.version,
+      status: value.status,
+      goals: value.goals.filter((item): item is string => typeof item === "string"),
+      segments: value.segments.filter((item): item is string => typeof item === "string"),
+      tone: value.tone,
+      priorities: value.priorities.filter((item): item is string => typeof item === "string"),
+      kpis: value.kpis.filter((item): item is string => typeof item === "string"),
+      requestId: value.requestId,
+      lastSyncRequestId: value.lastSyncRequestId,
+      generatedAt:
+        value.generatedAt instanceof Date
+          ? value.generatedAt
+          : new Date((value.generatedAt as string | undefined) ?? Date.now()),
+      missingPreconditions: Array.isArray(value.missingPreconditions)
+        ? value.missingPreconditions.filter(isAllowedPrecondition)
+        : [],
+      retryHint: typeof value.retryHint === "string" ? value.retryHint : undefined,
+    };
+  }
+
+  private parseLatestEmailStrategy(
+    records: Array<{ details: unknown }>,
+  ): EmailStrategy | null {
+    for (const record of records) {
+      const parsed = this.parseEmailStrategy(record.details);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
   }
 
   private collectMissingContext(

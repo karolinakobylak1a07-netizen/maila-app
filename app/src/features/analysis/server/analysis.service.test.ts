@@ -21,6 +21,8 @@ describe("AnalysisService.getOptimizationAreas", () => {
       listClientIds: vi.fn(),
       findDiscoveryContext: vi.fn(),
       listLatestStrategicPriorities: vi.fn(),
+      findDiscoveryAnswers: vi.fn(),
+      listLatestEmailStrategyAudit: vi.fn(),
     };
     mockAdapter = {
       fetchInventory: vi.fn(),
@@ -339,6 +341,230 @@ describe("AnalysisService.getOptimizationAreas", () => {
       expect(result.data.insights[0]?.recommendedAction).toBeNull();
       expect(result.data.insights[0]?.conflictDetails?.sourceA).toBe("sync_inventory");
       expect(result.data.insights[0]?.conflictDetails?.sourceB).toBe("cached_insights");
+    });
+  });
+
+  describe("generateEmailStrategy (Story 3.1)", () => {
+    it("returns complete versioned strategy when discovery and audit are complete (AC1)", async () => {
+      const now = new Date("2026-02-03T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-s-1",
+        startedAt: new Date("2026-02-03T10:00:00.000Z"),
+        flowCount: 3,
+        emailCount: 3,
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f3", name: "Flow 3", itemStatus: "disabled", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e1", name: "Email 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "EMAIL", externalId: "e2", name: "Email 2", itemStatus: "GAP", lastSyncAt: now },
+      ]);
+      mockRepository.findDiscoveryContext = vi.fn().mockResolvedValue({ goals: ["Wzrost konwersji"] });
+      mockRepository.listLatestStrategicPriorities = vi.fn().mockResolvedValue([
+        { id: "d1", content: "Priorytet retencyjny", createdAt: now },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-ok",
+      });
+
+      expect(result.data.strategy.status).toBe("ok");
+      expect(result.data.strategy.version).toBe(1);
+      expect(result.data.strategy.goals).toContain("Wzrost konwersji");
+      expect(result.data.strategy.segments).toContain("VIP");
+      expect(mockRepository.createAuditLog).toHaveBeenCalled();
+    });
+
+    it("returns blocked_preconditions for multi-condition precondition failure", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "FAILED_AUTH",
+        requestId: "sync-s-2",
+        startedAt: new Date("2026-02-03T10:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: [],
+        segments: [],
+        brandTone: null,
+        primaryKpis: [],
+      });
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+
+      const result = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-blocked",
+      });
+
+      expect(result.data.strategy.status).toBe("blocked_preconditions");
+      expect(result.data.strategy.missingPreconditions).toContain("discovery.goals");
+      expect(result.data.strategy.missingPreconditions).toContain("discovery.segments");
+      expect(result.data.strategy.missingPreconditions).toContain("audit.sync_ok");
+      expect(result.data.strategy.missingPreconditions).toContain("audit.optimization_available");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-strategy-blocked",
+          entityId: "client-1",
+          details: expect.objectContaining({
+            status: "blocked_preconditions",
+            missingPreconditions: expect.arrayContaining([
+              "discovery.goals",
+              "discovery.segments",
+              "audit.sync_ok",
+              "audit.optimization_available",
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it("returns blocked_preconditions for single-condition failure", async () => {
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-single",
+        startedAt: new Date("2026-02-03T10:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-single",
+      });
+
+      expect(result.data.strategy.status).toBe("blocked_preconditions");
+      expect(result.data.strategy.missingPreconditions).toEqual(["audit.optimization_available"]);
+      expect(result.data.strategy.requestId).toBe("req-strategy-single");
+      expect(mockRepository.createAuditLog).toHaveBeenCalledTimes(1);
+      expect(mockRepository.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-strategy-single",
+          details: expect.objectContaining({
+            clientId: "client-1",
+            missingPreconditions: ["audit.optimization_available"],
+          }),
+        }),
+      );
+    });
+
+    it("returns blocked_preconditions for edge precondition combination", async () => {
+      const now = new Date("2026-02-03T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-edge",
+        startedAt: new Date("2026-02-03T10:00:00.000Z"),
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: [],
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const result = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-edge",
+      });
+
+      expect(result.data.strategy.status).toBe("blocked_preconditions");
+      expect(result.data.strategy.missingPreconditions).toEqual(["discovery.segments"]);
+    });
+
+    it("returns in_progress_or_timeout and reuses resumable record (AC3)", async () => {
+      const now = new Date("2026-02-03T12:00:00.000Z");
+      mockRepository.findMembership = vi.fn().mockResolvedValue({ id: "m1" });
+      mockRepository.listRbacPoliciesByRole = vi.fn().mockResolvedValue([
+        { module: "AUDIT", canView: true, canEdit: false, canManage: false },
+      ]);
+      mockRepository.findLatestSyncRun = vi.fn().mockResolvedValue({
+        status: "OK",
+        requestId: "sync-s-3",
+        startedAt: new Date("2026-02-03T10:00:00.000Z"),
+        flowCount: 10,
+        emailCount: 10,
+      });
+      mockRepository.findDiscoveryAnswers = vi.fn().mockResolvedValue({
+        goals: ["Wzrost konwersji"],
+        segments: ["VIP"],
+        brandTone: "konkretny",
+        primaryKpis: ["conversion_rate"],
+      });
+      mockRepository.listInventory = vi.fn().mockResolvedValue([
+        { entityType: "FLOW", externalId: "f1", name: "Flow 1", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f2", name: "Flow 2", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f3", name: "Flow 3", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f4", name: "Flow 4", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f5", name: "Flow 5", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f6", name: "Flow 6", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f7", name: "Flow 7", itemStatus: "GAP", lastSyncAt: now },
+        { entityType: "FLOW", externalId: "f8", name: "Flow 8", itemStatus: "GAP", lastSyncAt: now },
+      ]);
+      mockRepository.findDiscoveryContext = vi.fn().mockResolvedValue({ goals: ["Wzrost konwersji"] });
+      mockRepository.listLatestStrategicPriorities = vi.fn().mockResolvedValue([
+        { id: "d1", content: "Priorytet retencyjny", createdAt: now },
+      ]);
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([]);
+      mockRepository.createAuditLog = vi.fn().mockResolvedValue({});
+
+      const first = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-timeout-1",
+      });
+      expect(first.data.strategy.status).toBe("in_progress_or_timeout");
+      expect(first.data.strategy.retryHint).toBeTruthy();
+
+      mockRepository.listLatestEmailStrategyAudit = vi.fn().mockResolvedValue([
+        {
+          id: "a1",
+          requestId: "req-strategy-timeout-1",
+          createdAt: now,
+          details: first.data.strategy,
+        },
+      ]);
+
+      const second = await analysisService.generateEmailStrategy("u1", "OWNER", {
+        clientId: "client-1",
+        requestId: "req-strategy-timeout-2",
+      });
+      expect(second.data.strategy.status).toBe("in_progress_or_timeout");
+      expect(second.data.strategy.requestId).toBe("req-strategy-timeout-1");
     });
   });
 });
