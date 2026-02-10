@@ -2445,7 +2445,9 @@ export async function POST(request: Request) {
           meta ? (meta as Record<string, unknown>).g : null,
           meta ? (meta as Record<string, unknown>).list_id : null,
           meta ? (meta as Record<string, unknown>).listId : null,
-          (event.relationships as Record<string, unknown> | undefined)?.list?.data?.id,
+          ((event.relationships as Record<string, unknown> | undefined)?.list as Record<string, unknown> | undefined)?.data
+            ? ((event.relationships as Record<string, unknown> | undefined)?.list as { data: { id: string } })?.data?.id
+            : null,
         );
       })();
     const extractListName = (event: KlaviyoEventRow) =>
