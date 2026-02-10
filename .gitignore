@@ -3,3 +3,4 @@
 .codex/
 .cursor/
 .env.keys
+agents/notion-fetcher/
