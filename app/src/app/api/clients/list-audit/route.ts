@@ -610,13 +610,21 @@ export async function POST(request: Request) {
   const headers = buildHeaders(apiKey);
 
   try {
-    let infrastructure = {
+    let infrastructure: {
+      spf_status: string;
+      dkim_status: string;
+      dmarc_status: string;
+      alignment_status: string;
+      status: "ok" | "warning" | "critical";
+      matchedDomain: string | null;
+      raw: Record<string, unknown>;
+    } = {
       spf_status: "unknown",
       dkim_status: "unknown",
       dmarc_status: "unknown",
       alignment_status: "unknown",
-      status: "warning" as const,
-      matchedDomain: null as string | null,
+      status: "warning",
+      matchedDomain: null,
       raw: {},
     };
     if (senderDomain) {
