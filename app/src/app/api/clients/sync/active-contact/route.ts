@@ -81,7 +81,6 @@ export async function GET() {
           senderDomain: context.client.senderDomain ?? null,
           ownerEmail: context.client.ownerEmail ?? null,
           internalEmails: context.client.internalEmails ?? [],
-          deviceMobileShare: context.client.deviceMobileShare ?? null,
         },
       },
       { status: 200 },
