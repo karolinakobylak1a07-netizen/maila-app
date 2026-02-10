@@ -579,15 +579,13 @@ export async function POST(request: Request) {
             ownerEmail: true,
             internalEmails: true,
             internalProfileFilter: true,
-            deviceMobileShare: true,
           },
         });
         senderDomain = clientProfile?.senderDomain ?? null;
         ownerEmail = clientProfile?.ownerEmail ?? null;
         internalEmails = clientProfile?.internalEmails ?? [];
         internalProfileFilter = (clientProfile?.internalProfileFilter ?? null) as Record<string, unknown> | null;
-        deviceMobileShare =
-          typeof clientProfile?.deviceMobileShare === "number" ? clientProfile.deviceMobileShare : null;
+        deviceMobileShare = null;
       } catch {
         senderDomain = null;
         ownerEmail = null;
