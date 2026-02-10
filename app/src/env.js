@@ -16,6 +16,8 @@ export const env = createEnv({
     DISCORD_CLIENT_ID: z.string().optional(),
     DISCORD_CLIENT_SECRET: z.string().optional(),
     KLAVIYO_API_KEY: z.string().optional(),
+    CLIENT_KEYS_ENCRYPTION_SECRET: z.string().optional(),
+    SERPAPI_API_KEY: z.string().optional(),
     CRON_SHARED_SECRET: z.string().optional(),
     DATABASE_URL: z.string().url(),
     NODE_ENV: z
@@ -43,6 +45,8 @@ export const env = createEnv({
     DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID,
     DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
     KLAVIYO_API_KEY: process.env.KLAVIYO_API_KEY,
+    CLIENT_KEYS_ENCRYPTION_SECRET: process.env.CLIENT_KEYS_ENCRYPTION_SECRET,
+    SERPAPI_API_KEY: process.env.SERPAPI_API_KEY,
     CRON_SHARED_SECRET: process.env.CRON_SHARED_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,

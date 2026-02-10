@@ -8052,6 +8052,8 @@ export namespace Prisma {
     id: string | null
     name: string | null
     status: $Enums.ClientProfileStatus | null
+    senderDomain: string | null
+    ownerEmail: string | null
     archivedAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -8061,6 +8063,8 @@ export namespace Prisma {
     id: string | null
     name: string | null
     status: $Enums.ClientProfileStatus | null
+    senderDomain: string | null
+    ownerEmail: string | null
     archivedAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -8070,6 +8074,10 @@ export namespace Prisma {
     id: number
     name: number
     status: number
+    senderDomain: number
+    ownerEmail: number
+    internalEmails: number
+    internalProfileFilter: number
     archivedAt: number
     createdAt: number
     updatedAt: number
@@ -8081,6 +8089,8 @@ export namespace Prisma {
     id?: true
     name?: true
     status?: true
+    senderDomain?: true
+    ownerEmail?: true
     archivedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -8090,6 +8100,8 @@ export namespace Prisma {
     id?: true
     name?: true
     status?: true
+    senderDomain?: true
+    ownerEmail?: true
     archivedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -8099,6 +8111,10 @@ export namespace Prisma {
     id?: true
     name?: true
     status?: true
+    senderDomain?: true
+    ownerEmail?: true
+    internalEmails?: true
+    internalProfileFilter?: true
     archivedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -8181,6 +8197,10 @@ export namespace Prisma {
     id: string
     name: string
     status: $Enums.ClientProfileStatus
+    senderDomain: string | null
+    ownerEmail: string | null
+    internalEmails: string[]
+    internalProfileFilter: JsonValue | null
     archivedAt: Date | null
     createdAt: Date
     updatedAt: Date
@@ -8207,6 +8227,10 @@ export namespace Prisma {
     id?: boolean
     name?: boolean
     status?: boolean
+    senderDomain?: boolean
+    ownerEmail?: boolean
+    internalEmails?: boolean
+    internalProfileFilter?: boolean
     archivedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -8223,6 +8247,10 @@ export namespace Prisma {
     id?: boolean
     name?: boolean
     status?: boolean
+    senderDomain?: boolean
+    ownerEmail?: boolean
+    internalEmails?: boolean
+    internalProfileFilter?: boolean
     archivedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -8232,6 +8260,10 @@ export namespace Prisma {
     id?: boolean
     name?: boolean
     status?: boolean
+    senderDomain?: boolean
+    ownerEmail?: boolean
+    internalEmails?: boolean
+    internalProfileFilter?: boolean
     archivedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -8241,12 +8273,16 @@ export namespace Prisma {
     id?: boolean
     name?: boolean
     status?: boolean
+    senderDomain?: boolean
+    ownerEmail?: boolean
+    internalEmails?: boolean
+    internalProfileFilter?: boolean
     archivedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type ClientProfileOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "status" | "archivedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["clientProfile"]>
+  export type ClientProfileOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "status" | "senderDomain" | "ownerEmail" | "internalEmails" | "internalProfileFilter" | "archivedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["clientProfile"]>
   export type ClientProfileInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     memberships?: boolean | ClientProfile$membershipsArgs<ExtArgs>
     contexts?: boolean | ClientProfile$contextsArgs<ExtArgs>
@@ -8273,6 +8309,10 @@ export namespace Prisma {
       id: string
       name: string
       status: $Enums.ClientProfileStatus
+      senderDomain: string | null
+      ownerEmail: string | null
+      internalEmails: string[]
+      internalProfileFilter: Prisma.JsonValue | null
       archivedAt: Date | null
       createdAt: Date
       updatedAt: Date
@@ -8708,6 +8748,10 @@ export namespace Prisma {
     readonly id: FieldRef<"ClientProfile", 'String'>
     readonly name: FieldRef<"ClientProfile", 'String'>
     readonly status: FieldRef<"ClientProfile", 'ClientProfileStatus'>
+    readonly senderDomain: FieldRef<"ClientProfile", 'String'>
+    readonly ownerEmail: FieldRef<"ClientProfile", 'String'>
+    readonly internalEmails: FieldRef<"ClientProfile", 'String[]'>
+    readonly internalProfileFilter: FieldRef<"ClientProfile", 'Json'>
     readonly archivedAt: FieldRef<"ClientProfile", 'DateTime'>
     readonly createdAt: FieldRef<"ClientProfile", 'DateTime'>
     readonly updatedAt: FieldRef<"ClientProfile", 'DateTime'>
@@ -19323,6 +19367,10 @@ export namespace Prisma {
     id: 'id',
     name: 'name',
     status: 'status',
+    senderDomain: 'senderDomain',
+    ownerEmail: 'ownerEmail',
+    internalEmails: 'internalEmails',
+    internalProfileFilter: 'internalProfileFilter',
     archivedAt: 'archivedAt',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
@@ -19575,6 +19623,20 @@ export namespace Prisma {
 
 
   /**
+   * Reference to a field of type 'Json'
+   */
+  export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+  /**
+   * Reference to a field of type 'QueryMode'
+   */
+  export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+  /**
    * Reference to a field of type 'Boolean'
    */
   export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
@@ -19592,20 +19654,6 @@ export namespace Prisma {
    * Reference to a field of type 'RbacModule[]'
    */
   export type ListEnumRbacModuleFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RbacModule[]'>
-    
-
-
-  /**
-   * Reference to a field of type 'Json'
-   */
-  export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
-    
-
-
-  /**
-   * Reference to a field of type 'QueryMode'
-   */
-  export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 
@@ -20007,6 +20055,10 @@ export namespace Prisma {
     id?: StringFilter<"ClientProfile"> | string
     name?: StringFilter<"ClientProfile"> | string
     status?: EnumClientProfileStatusFilter<"ClientProfile"> | $Enums.ClientProfileStatus
+    senderDomain?: StringNullableFilter<"ClientProfile"> | string | null
+    ownerEmail?: StringNullableFilter<"ClientProfile"> | string | null
+    internalEmails?: StringNullableListFilter<"ClientProfile">
+    internalProfileFilter?: JsonNullableFilter<"ClientProfile">
     archivedAt?: DateTimeNullableFilter<"ClientProfile"> | Date | string | null
     createdAt?: DateTimeFilter<"ClientProfile"> | Date | string
     updatedAt?: DateTimeFilter<"ClientProfile"> | Date | string
@@ -20022,6 +20074,10 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     status?: SortOrder
+    senderDomain?: SortOrderInput | SortOrder
+    ownerEmail?: SortOrderInput | SortOrder
+    internalEmails?: SortOrder
+    internalProfileFilter?: SortOrderInput | SortOrder
     archivedAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -20040,6 +20096,10 @@ export namespace Prisma {
     NOT?: ClientProfileWhereInput | ClientProfileWhereInput[]
     name?: StringFilter<"ClientProfile"> | string
     status?: EnumClientProfileStatusFilter<"ClientProfile"> | $Enums.ClientProfileStatus
+    senderDomain?: StringNullableFilter<"ClientProfile"> | string | null
+    ownerEmail?: StringNullableFilter<"ClientProfile"> | string | null
+    internalEmails?: StringNullableListFilter<"ClientProfile">
+    internalProfileFilter?: JsonNullableFilter<"ClientProfile">
     archivedAt?: DateTimeNullableFilter<"ClientProfile"> | Date | string | null
     createdAt?: DateTimeFilter<"ClientProfile"> | Date | string
     updatedAt?: DateTimeFilter<"ClientProfile"> | Date | string
@@ -20055,6 +20115,10 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     status?: SortOrder
+    senderDomain?: SortOrderInput | SortOrder
+    ownerEmail?: SortOrderInput | SortOrder
+    internalEmails?: SortOrder
+    internalProfileFilter?: SortOrderInput | SortOrder
     archivedAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -20070,6 +20134,10 @@ export namespace Prisma {
     id?: StringWithAggregatesFilter<"ClientProfile"> | string
     name?: StringWithAggregatesFilter<"ClientProfile"> | string
     status?: EnumClientProfileStatusWithAggregatesFilter<"ClientProfile"> | $Enums.ClientProfileStatus
+    senderDomain?: StringNullableWithAggregatesFilter<"ClientProfile"> | string | null
+    ownerEmail?: StringNullableWithAggregatesFilter<"ClientProfile"> | string | null
+    internalEmails?: StringNullableListFilter<"ClientProfile">
+    internalProfileFilter?: JsonNullableWithAggregatesFilter<"ClientProfile">
     archivedAt?: DateTimeNullableWithAggregatesFilter<"ClientProfile"> | Date | string | null
     createdAt?: DateTimeWithAggregatesFilter<"ClientProfile"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"ClientProfile"> | Date | string
@@ -21090,6 +21158,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -21105,6 +21177,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -21120,6 +21196,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -21135,6 +21215,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -21150,6 +21234,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -21159,6 +21247,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -21168,6 +21260,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -22324,6 +22420,37 @@ export namespace Prisma {
     not?: NestedEnumClientProfileStatusFilter<$PrismaModel> | $Enums.ClientProfileStatus
   }
 
+  export type StringNullableListFilter<$PrismaModel = never> = {
+    equals?: string[] | ListStringFieldRefInput<$PrismaModel> | null
+    has?: string | StringFieldRefInput<$PrismaModel> | null
+    hasEvery?: string[] | ListStringFieldRefInput<$PrismaModel>
+    hasSome?: string[] | ListStringFieldRefInput<$PrismaModel>
+    isEmpty?: boolean
+  }
+  export type JsonNullableFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<JsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>,
+        Required<JsonNullableFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>
+
+  export type JsonNullableFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+  }
+
   export type DiscoveryOnboardingNullableScalarRelationFilter = {
     is?: DiscoveryOnboardingWhereInput | null
     isNot?: DiscoveryOnboardingWhereInput | null
@@ -22353,6 +22480,10 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     status?: SortOrder
+    senderDomain?: SortOrder
+    ownerEmail?: SortOrder
+    internalEmails?: SortOrder
+    internalProfileFilter?: SortOrder
     archivedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -22362,6 +22493,8 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     status?: SortOrder
+    senderDomain?: SortOrder
+    ownerEmail?: SortOrder
     archivedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -22371,6 +22504,8 @@ export namespace Prisma {
     id?: SortOrder
     name?: SortOrder
     status?: SortOrder
+    senderDomain?: SortOrder
+    ownerEmail?: SortOrder
     archivedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -22384,6 +22519,32 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedEnumClientProfileStatusFilter<$PrismaModel>
     _max?: NestedEnumClientProfileStatusFilter<$PrismaModel>
+  }
+  export type JsonNullableWithAggregatesFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>,
+        Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>
+
+  export type JsonNullableWithAggregatesFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedJsonNullableFilter<$PrismaModel>
+    _max?: NestedJsonNullableFilter<$PrismaModel>
   }
 
   export type ClientProfileScalarRelationFilter = {
@@ -22639,29 +22800,6 @@ export namespace Prisma {
     _min?: NestedEnumRbacModuleFilter<$PrismaModel>
     _max?: NestedEnumRbacModuleFilter<$PrismaModel>
   }
-  export type JsonNullableFilter<$PrismaModel = never> =
-    | PatchUndefined<
-        Either<Required<JsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>,
-        Required<JsonNullableFilterBase<$PrismaModel>>
-      >
-    | OptionalFlat<Omit<Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>
-
-  export type JsonNullableFilterBase<$PrismaModel = never> = {
-    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
-    path?: string[]
-    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
-    string_contains?: string | StringFieldRefInput<$PrismaModel>
-    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
-    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
-    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
-  }
 
   export type UserNullableScalarRelationFilter = {
     is?: UserWhereInput | null
@@ -22697,32 +22835,6 @@ export namespace Prisma {
     entityType?: SortOrder
     entityId?: SortOrder
     createdAt?: SortOrder
-  }
-  export type JsonNullableWithAggregatesFilter<$PrismaModel = never> =
-    | PatchUndefined<
-        Either<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>,
-        Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>
-      >
-    | OptionalFlat<Omit<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>
-
-  export type JsonNullableWithAggregatesFilterBase<$PrismaModel = never> = {
-    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
-    path?: string[]
-    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
-    string_contains?: string | StringFieldRefInput<$PrismaModel>
-    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
-    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
-    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedJsonNullableFilter<$PrismaModel>
-    _max?: NestedJsonNullableFilter<$PrismaModel>
   }
 
   export type EnumSyncTriggerFilter<$PrismaModel = never> = {
@@ -23333,6 +23445,10 @@ export namespace Prisma {
     deleteMany?: AuditLogScalarWhereInput | AuditLogScalarWhereInput[]
   }
 
+  export type ClientProfileCreateinternalEmailsInput = {
+    set: string[]
+  }
+
   export type ClientMembershipCreateNestedManyWithoutClientInput = {
     create?: XOR<ClientMembershipCreateWithoutClientInput, ClientMembershipUncheckedCreateWithoutClientInput> | ClientMembershipCreateWithoutClientInput[] | ClientMembershipUncheckedCreateWithoutClientInput[]
     connectOrCreate?: ClientMembershipCreateOrConnectWithoutClientInput | ClientMembershipCreateOrConnectWithoutClientInput[]
@@ -23417,6 +23533,11 @@ export namespace Prisma {
 
   export type EnumClientProfileStatusFieldUpdateOperationsInput = {
     set?: $Enums.ClientProfileStatus
+  }
+
+  export type ClientProfileUpdateinternalEmailsInput = {
+    set?: string[]
+    push?: string | string[]
   }
 
   export type ClientMembershipUpdateManyWithoutClientNestedInput = {
@@ -24046,6 +24167,29 @@ export namespace Prisma {
     _min?: NestedEnumClientProfileStatusFilter<$PrismaModel>
     _max?: NestedEnumClientProfileStatusFilter<$PrismaModel>
   }
+  export type NestedJsonNullableFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<NestedJsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>,
+        Required<NestedJsonNullableFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>
+
+  export type NestedJsonNullableFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+  }
 
   export type NestedBoolFilter<$PrismaModel = never> = {
     equals?: boolean | BooleanFieldRefInput<$PrismaModel>
@@ -24075,29 +24219,6 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedEnumRbacModuleFilter<$PrismaModel>
     _max?: NestedEnumRbacModuleFilter<$PrismaModel>
-  }
-  export type NestedJsonNullableFilter<$PrismaModel = never> =
-    | PatchUndefined<
-        Either<Required<NestedJsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>,
-        Required<NestedJsonNullableFilterBase<$PrismaModel>>
-      >
-    | OptionalFlat<Omit<Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>
-
-  export type NestedJsonNullableFilterBase<$PrismaModel = never> = {
-    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
-    path?: string[]
-    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
-    string_contains?: string | StringFieldRefInput<$PrismaModel>
-    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
-    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
-    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
-    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
-    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
   }
 
   export type NestedEnumSyncTriggerFilter<$PrismaModel = never> = {
@@ -25265,6 +25386,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25279,6 +25404,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25348,6 +25477,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25362,6 +25495,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25421,6 +25558,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25435,6 +25576,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25504,6 +25649,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25518,6 +25667,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25616,6 +25769,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25630,6 +25787,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25705,6 +25866,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25719,6 +25884,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25733,6 +25902,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25747,6 +25920,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -25844,6 +26021,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -25858,6 +26039,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -26177,6 +26362,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -26191,6 +26380,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -26221,6 +26414,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -26235,6 +26432,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -26249,6 +26450,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -26263,6 +26468,10 @@ export namespace Prisma {
     id?: string
     name: string
     status?: $Enums.ClientProfileStatus
+    senderDomain?: string | null
+    ownerEmail?: string | null
+    internalEmails?: ClientProfileCreateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -26293,6 +26502,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -26307,6 +26520,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     status?: EnumClientProfileStatusFieldUpdateOperationsInput | $Enums.ClientProfileStatus
+    senderDomain?: NullableStringFieldUpdateOperationsInput | string | null
+    ownerEmail?: NullableStringFieldUpdateOperationsInput | string | null
+    internalEmails?: ClientProfileUpdateinternalEmailsInput | string[]
+    internalProfileFilter?: NullableJsonNullValueInput | InputJsonValue
     archivedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string

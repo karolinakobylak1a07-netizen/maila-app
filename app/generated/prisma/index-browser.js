@@ -171,6 +171,10 @@ exports.Prisma.ClientProfileScalarFieldEnum = {
   id: 'id',
   name: 'name',
   status: 'status',
+  senderDomain: 'senderDomain',
+  ownerEmail: 'ownerEmail',
+  internalEmails: 'internalEmails',
+  internalProfileFilter: 'internalProfileFilter',
   archivedAt: 'archivedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

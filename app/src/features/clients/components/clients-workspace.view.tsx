@@ -1,4 +1,5 @@
-import type React from "react";
+import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   DISCOVERY_QUESTION_KEYS,
   type RbacModule,
@@ -15,6 +16,12 @@ type ProfileViewModel = {
   status: "ACTIVE" | "ARCHIVED";
   canEdit: boolean;
   isActive: boolean;
+};
+
+type ClientSyncSummary = {
+  status: "ok" | "warning" | "fail" | "unknown";
+  statusLabel: string;
+  checkedAt: string | null;
 };
 
 type StrategicDecisionViewModel = {
@@ -42,6 +49,8 @@ type ClientsWorkspaceViewProps = {
   isSubmitting: boolean;
   listLoading: boolean;
   profiles: ProfileViewModel[];
+  clientSyncSummaries: Record<string, ClientSyncSummary>;
+  clientSyncSummariesLoading: boolean;
   activeClientName: string | null;
   decisions: StrategicDecisionViewModel[];
   decisionsLoading: boolean;
@@ -86,6 +95,8 @@ type ClientsWorkspaceViewProps = {
   onSwitchClient: (clientId: string) => void;
   onStartEdit: (profile: { id: string; name: string }) => void;
   onArchiveProfile: (clientId: string) => void;
+  onOpenSyncForClient: (clientId: string) => void;
+  onOpenListAuditForClient: (clientId: string) => void;
   onDecisionContentChange: (value: string) => void;
   onDecisionSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onDiscoveryAnswerChange: (key: DiscoveryQuestionKey, value: string) => void;
@@ -108,16 +119,54 @@ const DISCOVERY_QUESTION_LABELS: Record<DiscoveryQuestionKey, string> = {
 
 export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
   const showClientsWorkspace = props.canViewClientsModule;
+  const [isProfileFormOpen, setIsProfileFormOpen] = useState(false);
+  const profileFormRef = useRef<HTMLDivElement | null>(null);
+  const syncStatusClass: Record<ClientSyncSummary["status"], string> = {
+    ok: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    fail: "border-red-200 bg-red-50 text-red-700",
+    unknown: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+  const syncStatusLabel: Record<ClientSyncSummary["status"], string> = {
+    ok: "OK",
+    warning: "UWAGA",
+    fail: "BŁĄD",
+    unknown: "BRAK",
+  };
+
+  useEffect(() => {
+    if (props.formMode === "edit") {
+      setIsProfileFormOpen(true);
+    }
+  }, [props.formMode]);
+
+  useEffect(() => {
+    if (isProfileFormOpen) {
+      profileFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [isProfileFormOpen]);
 
   return (
     <section className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-8">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold text-slate-900">Modul klientow</h1>
-        <p className="text-sm text-slate-600">
-          Zarzadzanie profilami klientow, archiwizacja i bezpieczne przelaczanie
-          kontekstu.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-semibold text-slate-900">Modul klientow</h1>
+          <p className="text-sm text-slate-600">
+            Zarzadzanie profilami klientow, archiwizacja i bezpieczne przelaczanie
+            kontekstu.
+          </p>
+        </div>
+        <span className="h-10 w-10" />
       </header>
+
+      <Link
+        href="/clients/connect"
+        className="fixed right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-3xl leading-none text-white shadow-md"
+        aria-label="Nowa synchronizacja klienta"
+        title="Nowa synchronizacja klienta"
+      >
+        +
+      </Link>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-lg font-medium text-slate-900">Dostepy RBAC</h2>
@@ -242,56 +291,82 @@ export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
         </div>
       )}
 
-      {showClientsWorkspace && <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-lg font-medium text-slate-900">
-          {props.formMode === "edit" ? "Edytuj profil klienta" : "Nowy profil klienta"}
-        </h2>
-
-        <form className="flex flex-col gap-3" onSubmit={props.onSubmit}>
-          <label className="flex flex-col gap-1 text-sm text-slate-700">
-            Nazwa klienta
-            <input
-              required
-              minLength={2}
-              disabled={!props.canEditClientsModule}
-              value={props.name}
-              onChange={(event) => props.onNameChange(event.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-              placeholder="np. FitStore"
-            />
-          </label>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={props.isSubmitting || !props.canEditClientsModule}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {props.formMode === "edit" ? "Zapisz" : "Utworz"}
-            </button>
-
-            {props.formMode === "edit" && (
+      {showClientsWorkspace && isProfileFormOpen && (
+        <div ref={profileFormRef} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-medium text-slate-900">
+              {props.formMode === "edit" ? "Edytuj profil klienta" : "Nowy profil klienta"}
+            </h2>
+            {props.formMode !== "edit" && (
               <button
                 type="button"
-                onClick={props.onCancelEdit}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+                onClick={() => setIsProfileFormOpen(false)}
+                className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700"
               >
-                Anuluj
+                Zamknij
               </button>
             )}
           </div>
-        </form>
 
-        {props.formError && <p className="mt-3 text-sm text-red-600">{props.formError}</p>}
-      </div>}
+          <form className="flex flex-col gap-3" onSubmit={props.onSubmit}>
+            <label className="flex flex-col gap-1 text-sm text-slate-700">
+              Nazwa klienta
+              <input
+                required
+                minLength={2}
+                disabled={!props.canEditClientsModule}
+                value={props.name}
+                onChange={(event) => props.onNameChange(event.target.value)}
+                className="rounded-md border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
+                placeholder="np. FitStore"
+              />
+            </label>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={props.isSubmitting || !props.canEditClientsModule}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {props.formMode === "edit" ? "Zapisz" : "Utworz"}
+              </button>
+
+              {props.formMode === "edit" && (
+                <button
+                  type="button"
+                  onClick={props.onCancelEdit}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+                >
+                  Anuluj
+                </button>
+              )}
+            </div>
+          </form>
+
+          {props.formError && <p className="mt-3 text-sm text-red-600">{props.formError}</p>}
+        </div>
+      )}
 
       {showClientsWorkspace && <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-lg font-medium text-slate-900">Lista klientow</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-slate-900">Lista klientow</h2>
+          {props.canEditClientsModule && (
+            <button
+              type="button"
+              onClick={() => setIsProfileFormOpen(true)}
+              className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white"
+            >
+              + Nowy klient
+            </button>
+          )}
+        </div>
 
         {props.listLoading && <p className="text-sm text-slate-600">Ladowanie...</p>}
 
         {!props.listLoading && props.profiles.length === 0 && (
-          <p className="text-sm text-slate-600">Brak klientow. Dodaj pierwszy profil.</p>
+          <p className="text-sm text-slate-600">
+            Brak klientow. Kliknij plus po prawej stronie, aby dodac pierwszy profil.
+          </p>
         )}
 
         <ul className="flex flex-col gap-3">
@@ -302,9 +377,30 @@ export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
             >
               <div>
                 <p className="font-medium text-slate-900">{profile.name}</p>
-                <p className="text-xs text-slate-600">
-                  Status: {profile.status} {profile.isActive ? "• aktywny kontekst" : ""}
-                </p>
+                {(() => {
+                  const syncSummary = props.clientSyncSummaries[profile.id];
+                  const syncStatus = syncSummary?.status ?? "unknown";
+                  return (
+                    <>
+                      <p className="text-xs text-slate-600">
+                        Status: {profile.status} {profile.isActive ? "• aktywny kontekst" : ""}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${syncStatusClass[syncStatus]}`}
+                        >
+                          Sync: {syncStatusLabel[syncStatus]}
+                        </span>
+                        <span>{syncSummary?.statusLabel ?? "Brak danych synchronizacji"}</span>
+                        {syncSummary?.checkedAt && (
+                          <span>
+                            ({new Date(syncSummary.checkedAt).toLocaleString("pl-PL")})
+                          </span>
+                        )}
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -315,7 +411,10 @@ export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
                   isArchived: profile.status === "ARCHIVED",
                   onSwitchClient: props.onSwitchClient,
                   onStartEdit: (clientId) =>
-                    props.onStartEdit({ id: clientId, name: profile.name }),
+                    (() => {
+                      setIsProfileFormOpen(true);
+                      props.onStartEdit({ id: clientId, name: profile.name });
+                    })(),
                   onArchiveProfile: props.onArchiveProfile,
                 }).map((action) => (
                   <button
@@ -328,6 +427,21 @@ export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
                     {action.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => props.onOpenSyncForClient(profile.id)}
+                  className="rounded-md border border-slate-300 px-3 py-1 text-xs"
+                >
+                  Synchronizacja
+                </button>
+                <button
+                  type="button"
+                  onClick={() => props.onOpenListAuditForClient(profile.id)}
+                  disabled={props.clientSyncSummariesLoading}
+                  className="rounded-md border border-slate-300 px-3 py-1 text-xs disabled:opacity-40"
+                >
+                  Audyt listy
+                </button>
               </div>
             </li>
           ))}
@@ -483,6 +597,7 @@ export function ClientsWorkspaceView(props: ClientsWorkspaceViewProps) {
           ))}
         </ul>
       </div>}
+
     </section>
   );
 }

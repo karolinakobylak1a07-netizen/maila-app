@@ -1,0 +1,12 @@
+{
+  "name": "notion-content-fetcher",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Fetch and categorize all content from Karolina Kobylak's Notion workspace",
+  "scripts": {
+    "fetch": "node fetch-notion-content.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15"
+  }
+}

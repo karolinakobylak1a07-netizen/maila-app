@@ -125,12 +125,16 @@ model VerificationToken {
 }
 
 model ClientProfile {
-  id         String              @id @default(cuid())
-  name       String
-  status     ClientProfileStatus @default(ACTIVE)
-  archivedAt DateTime?           @map("archived_at")
-  createdAt  DateTime            @default(now()) @map("created_at")
-  updatedAt  DateTime            @updatedAt @map("updated_at")
+  id                    String              @id @default(cuid())
+  name                  String
+  status                ClientProfileStatus @default(ACTIVE)
+  senderDomain          String?             @map("sender_domain")
+  ownerEmail            String?             @map("owner_email")
+  internalEmails        String[]            @default([]) @map("internal_emails")
+  internalProfileFilter Json?               @map("internal_profile_filter")
+  archivedAt            DateTime?           @map("archived_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
 
   memberships         ClientMembership[]
   contexts            ClientUserContext[]

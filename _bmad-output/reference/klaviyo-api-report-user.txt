@@ -1,0 +1,436 @@
+Klaviyo API – najnowsze wersje, funkcje i endpointy
+
+[USER-PROVIDED REPORT RAW]
+
+Wersje API Klaviyo i ostatnie zmiany
+
+Klaviyo udostępnia obecnie dwie generacje API: starsze API w wersjach v1/v2 (stopniowo wycofywane) oraz nowe API wersjonowane datami wydania (np. v2023-10-15, v2024-10-15 itd.). Najnowsze wydanie API ma oznaczenie 2026-01-15, a poprzednie wersje są wspierane przez 2 lata od daty wydania. Firma ogłosiła plan wycofania legacy API v1/v2 – zostaną one wyłączone 30 czerwca 2024 i deweloperzy powinni migrować integracje na nowe API przed tą datą. Nowe API Klaviyo jest w pełni RESTful, zgodne ze standardem JSON:API, i zawiera wiele ulepszeń w porównaniu do v1/v2 (m.in. spójniejsze zasoby, relacje między obiektami, zapytania filtrujące, agregacje metryk). Wszystkie aktywne (nienieważne) endpointy z v1 i v2 zostały przeniesione do nowych wersji lub mają odpowiedniki w nowym API.
+
+Ostatnie aktualizacje: W najnowszej wersji (2026-01-15) dodano m.in. Geofencing API (beta) – endpoint pozwalający pobrać listę geofence (obszarów geograficznych) dla aplikacji mobilnych, bez wymaganej autoryzacji (wyniki można filtrować za pomocą nagłówka X-Klaviyo-API-Filters z parametrami lat i lng). Ponadto rozszerzono Custom Objects API – wprowadzono nowy endpoint do tworzenia pojedynczych rekordów obiektu danych (z wyższymi limitami zapytań), ułatwiający jednorazowe inserty danych. Nadal dostępny jest wcześniejszy endpoint bulk import dla obiektów niestandardowych (przyjmuje batch do 500 rekordów). W trybie beta udostępniono także API do zarządzania schematami Custom Objects (tworzenie typów obiektów, definiowanie relacji, itp.). W ostatnich wydaniach 2025 roku pojawiły się również tagi (do kategoryzowania kampanii, list, segmentów i flow) oraz wsparcie API dla kampanii push i SMS – np. API kampanii obsługuje obecnie wielokanałowe wiadomości (e-mail, SMS, push) wraz z odpowiednimi polami i opcjami (takimi jak liczniki odznak push czy metryki ROI dla SMS).
+
+Uwierzytelnianie i autoryzacja API
+
+Klucze API i OAuth: Do autoryzacji wywołań Klaviyo API używa się prywatnych kluczy API lub mechanizmu OAuth 2.0. Każde żądanie do server-side endpointów (bazowych ścieżek /api/*) musi zawierać w nagłówku Authorization prywatny klucz API w formacie:
+Authorization: Klaviyo-API-Key <twój_prywatny_klucz>
+(np. Authorization: Klaviyo-API-Key pk_xxxxxxxxxx). Prywatne klucze (prefix pk_) są generowane w ustawieniach konta Klaviyo i mogą mieć przypisane ograniczone scope’y dostępu (zakresy uprawnień) – np. osobne uprawnienia do odczytu/zapisu kampanii (campaigns:read, campaigns:write), list, profili itd. Dzięki scope’om można wydzielić klucze o niższych uprawnieniach dla bezpieczeństwa.
+
+Dla integracji partnerskich przeznaczono OAuth – pozwala on uzyskać token dostępu z określonymi scope’ami zamiast udostępniania klucza prywatnego. OAuth zapewnia większe bezpieczeństwo i indywidualne limitowanie requestów per token (ważne przy aplikacjach instalowanych przez wielu użytkowników). Aby użyć OAuth, należy utworzyć aplikację deweloperską w Klaviyo i zarejestrować żądane scope’y oraz URL przekierowania. Autoryzacja wymaga wdrożenia flow OAuth 2.0 (z PKCE) po stronie aplikacji, a uzyskany access token przekazywany jest w nagłówku Authorization przy wywołaniach API (w formacie Bearer lub analogicznym). Tokeny OAuth są ważne 1 godzinę (z możliwością odświeżenia przy użyciu refresh tokenu) i również posiadają przypisane scope’y dostępu.
+
+Publiczny klucz (Site ID): Osobnym sposobem uwierzytelnienia jest publiczny klucz API (tzw. Site ID, 6-znakowy identyfikator konta). Używany jest on wyłącznie do client-side endpointów Klaviyo (np. ścieżki zaczynające się od /client/), które służą do trackowania zdarzeń i profili z poziomu klienta (np. z przeglądarki lub SDK mobilnego). Przykładowo, do wywołania endpointu subskrypcji po stronie klienta można przekazać site ID jako parametr URL company_id. Publiczny klucz nie daje dostępu do wrażliwych danych konta – jego rola ogranicza się do identyfikacji konta przy śledzeniu zdarzeń i profili po stronie użytkownika (np. endpoints Track i Identify). Uwaga: Nigdy nie należy używać prywatnych kluczy w kodzie frontendu lub udostępniać ich publicznie (wywołania do /api powinny następować z serwera), aby nie narazić konta na nadużycia.
+
+Nagłówek revision: Nowe API jest wersjonowane poprzez nagłówek revision – każda publiczna wersja API ma identyfikator daty (np. revision: 2025-10-15). Wysyłając żądanie, warto ustawić ten nagłówek, aby mieć pewność korzystania z określonej wersji kontraktu API (domyślnie, jeśli brak nagłówka, używana jest najnowsza wersja). Przykład wywołania API z nagłówkami autoryzacji i wersji:
+
+curl --request GET 'https://a.klaviyo.com/api/campaigns/?filter=equals(messages.channel,%20\'email\')'      --header 'Authorization: Klaviyo-API-Key <twój_prywatny_klucz>'      --header 'Accept: application/json'      --header 'revision: 2023-12-15'
+
+Powyższe zapytanie pobiera listę kampanii e-mail (filtrowanie po kanale wiadomości) z użyciem prywatnego klucza w nagłówku.
+
+Przegląd głównych endpointów API wg funkcjonalności
+
+Kampanie (Campaigns API)
+
+API kampanii umożliwia zarządzanie kampaniami marketingowymi (jednorazowymi wysyłkami e-mail/SMS/push). Pozwala m.in. tworzyć kampanie, pobierać ich szczegóły, edytować ustawienia (listy/segmenty odbiorców, treść wiadomości, ustawienia śledzenia UTM itp.), planować lub wysyłać kampanie, a także klonować czy usuwać kampanie. Kampanie w Klaviyo mogą zawierać wiele wiadomości (np. warianty A/B testów lub różne kanały), dlatego API udostępnia również pod-endpointy do zarządzania poszczególnymi wiadomościami kampanii (tzw. campaign messages – np. treść e-mail, SMS, push) oraz ich zasobami (np. obrazy). Wysyłka kampanii odbywa się asynchronicznie poprzez utworzenie zadania wysyłki (send job).
+
+Wymagane scope’y: Do odczytu kampanii wymagany jest zakres campaigns:read, a do tworzenia/edycji campaigns:write. Poniżej wybrane endpointy kampanii:
+Endpoint (ścieżka)
+Metoda HTTP
+Opis funkcji
+/api/campaigns
+GET
+Pobierz listę kampanii w koncie (wymaga filtrowania po typie, np. email vs. sms) . Domyślnie zwraca podstawowe dane kampanii (nazwa, status, odbiorcy itp.).
+/api/campaigns
+POST
+Utwórz nową kampanię (jako szkic/draft). W body podaje się m.in. nazwę, listę/segment odbiorców i kanał.
+/api/campaigns/{campaign_id}
+GET
+Pobierz szczegóły konkretnej kampanii (atrybuty, ustawienia, powiązane wiadomości itp.).
+/api/campaigns/{campaign_id}
+PATCH
+Zaktualizuj kampanię (np. zmień nazwę, ustawienia smart sending, segmenty wykluczone, harmonogram wysyłki itp.).
+/api/campaigns/{campaign_id}
+DELETE
+Usuń kampanię (o ile jest w statusie szkicu lub archiwalna).
+/api/campaigns/{campaign_id}/campaign-messages
+GET
+Pobierz listę wiadomości należących do kampanii (np. warianty A/B, wiadomość e-mail vs SMS).
+/api/campaign-messages/{message_id}
+PATCH
+Zaktualizuj zawartość lub ustawienia pojedynczej wiadomości kampanii (np. temat e-maila, treść, szablon) .
+/api/campaigns/{campaign_id}/send (lub /api/campaign-send-jobs)
+POST
+Wyślij kampanię – utwórz zadanie wysyłki kampanii. Kampania zmienia status na zaplanowaną/queued.
+/api/campaign-send-jobs/{job_id}
+GET
+Sprawdź status zadania wysyłki kampanii (queued, processing, complete, cancelled) .
+/api/campaign-send-jobs/{job_id}
+PATCH
+Anuluj zaplanowaną wysyłkę lub przywróć kampanię do szkicu (jeśli jeszcze nie wysłano) .
+/api/campaigns/{campaign_id}/clone
+POST
+Sklonuj kampanię – tworzy kopię istniejącej kampanii jako szkic (przydatne aby ponownie wysłać anulowaną kampanię) .
+Przyp.: Tworząc kampanię przez API, należy utworzyć co najmniej jedną wiadomość (np. e-mail) i przypisać do kampanii szablon treści. W API służy do tego m.in. endpoint Assign Template to Campaign Message (przypisanie istniejącego szablonu do wiadomości kampanii) oraz możliwość aktualizacji treści wiadomości poprzez Update Campaign Message. API kampanii wspiera też szacowanie liczby odbiorców przed wysyłką – endpoint Create Campaign Recipient Estimation Job pozwala wyliczyć liczbę planowanych adresatów na podstawie aktualnych segmentów/list.
+
+Listy (Lists API)
+
+Listy w Klaviyo to zbiory adresów/profili tworzone manualnie lub przez zapisy (np. formularze). API list pozwala zarządzać listami statycznymi: tworzyć nowe listy (np. newsletterowe), pobierać ich szczegóły, edytować nazwy, czy usuwać listy. Kluczową funkcją jest zarządzanie członkostwem profili w listach – dodawanie lub usuwanie profilów (subskrypcje). Poprzez listy można też inicjować flow (automatyzacje) – do danej listy mogą być przypisane flow uruchamiane na dołączenie nowego profilu.
+
+Scope: lists:read / lists:write. Najważniejsze endpointy list:
+Endpoint (ścieżka)
+Metoda
+Opis
+/api/lists
+GET
+Pobierz wszystkie listy na koncie (można filtrować po nazwie, ID itp.). Zwraca paginowaną listę list . Limit: max 10 wyników na stronę domyślnie.
+/api/lists
+POST
+Utwórz nową listę odbiorców podając nazwę (np. “Newsletter Q1 2026”).
+/api/lists/{list_id}
+GET
+Pobierz informacje o konkretnej liście (nazwa, data utworzenia, itp.).
+/api/lists/{list_id}
+PATCH
+Zaktualizuj właściwości listy (np. zmień nazwę).
+/api/lists/{list_id}
+DELETE
+Usuń listę (jeśli nie jest potrzebna – uwaga: usunięcie listy wypisuje z niej wszystkich, ale profile pozostają w bazie).
+/api/lists/{list_id}/profiles
+GET
+Pobierz profile należące do listy (zwraca paginowaną listę kontaktów w liście).
+/api/lists/{list_id}/profiles
+POST
+Dodaj profile do listy – masowe dodanie subskrybentów do listy (body zawiera identyfikatory/emaile profilów).
+/api/lists/{list_id}/profiles
+DELETE
+Usuń profile z listy – wypisanie podanych profilów z listy (body z ID profilów do usunięcia).
+/api/lists/{list_id}/tags
+GET
+Pobierz tagi przypisane do listy (lista etykiet organizacyjnych; patrz API tagów).
+/api/lists/{list_id}/flows-triggered
+GET
+Pobierz listę flow (automatyzacji), które są wyzwalane przez zapisy do tej listy .
+
+Segmenty (Segments API)
+
+Segmenty to dynamiczne zbiory kontaktów wyłanianych na podstawie warunków (np. “klienci, którzy dokonali zakupu > 100 zł w ostatnich 30 dniach”). Segmenty są obliczane automatycznie przez Klaviyo i aktualizowane, gdy profile spełniają lub przestają spełniać warunek segmentu. API segmentów pozwala pobierać listę segmentów, ich szczegóły, a także tworzyć nowe segmenty i zarządzać nimi (np. edytować nazwę lub filtr segmentu, usuwać segmenty). Możliwe jest także pobranie członków segmentu. Nie dodaje się profilów ręcznie do segmentu (wynikają one z definicji warunków).
+
+Scope: segments:read / segments:write. Kluczowe endpointy:
+Endpoint
+Metoda
+Opis
+/api/segments
+GET
+Pobierz listę wszystkich segmentów na koncie (każdy zawiera nazwę, definicję warunku, rozmiar itp.).
+/api/segments
+POST
+Utwórz nowy segment – wymaga zdefiniowania reguł segmentu (przykładowo warunek na atrybuty lub zdarzenia).
+/api/segments/{segment_id}
+GET
+Pobierz szczegóły segmentu (w tym definicję warunków w formacie JSON, np. warunki dot. zdarzeń lub właściwości profilowych).
+/api/segments/{segment_id}
+PATCH
+Zaktualizuj segment – zmień nazwę lub definicję warunków segmentu. Pozwala m.in. dostosować kryteria segmentacji.
+/api/segments/{segment_id}
+DELETE
+Usuń segment (profilom nic się nie dzieje, tylko grupa dynamiczna zostaje usunięta).
+/api/segments/{segment_id}/profiles
+GET
+Pobierz profile należące do segmentu (dynamicznie wyliczone). Pozwala to np. pobrać wszystkich spełniających dany warunek w danej chwili.
+/api/segments/{segment_id}/tags
+GET
+Pobierz tagi przypisane do segmentu (etykiety organizacyjne).
+(+ analogiczne endpointy /tags dla przypisywania/usuwania tagów do segmentów – opis w sekcji Tagowanie).
+Segmenty, podobnie jak listy, mogą służyć jako audience (odbiorcy) kampanii oraz jako wyzwalacze flow. API udostępnia np. endpointy pozwalające sprawdzić, które flow są uruchamiane zmianą segmentu (/api/segments/{id}/flows-triggered). Warto dodać, że utworzenie segmentu przez API wymaga dość złożonego JSON z definicją filtrów – często łatwiej jest utworzyć segment w panelu Klaviyo, a API wykorzystać głównie do odczytu wyników segmentacji.
+
+Profile i subskrypcje (Profiles API)
+
+Profile reprezentują pojedyncze kontakty/klientów (odpowiednik rekordu kontaktu z informacjami takimi jak email, numer telefonu, imię, nazwisko, właściwości personalizowane, zgody itp.). API profili umożliwia tworzenie nowych kontaktów, odczytywanie i modyfikację danych profilowych, a także łączenie duplikatów. Dodatkowo obejmuje mechanizmy zgód marketingowych (subscribe/unsubscribe) oraz suppress/unsuppress (wypisanie globalne z całej komunikacji).
+
+Scope: profiles:read / profiles:write (dla danych profilowych), a także scope’y powiązane z subskrypcjami (lists:write dla dodania do listy, profiles:write dla suppress). Wybrane endpointy profili:
+Endpoint (ścieżka)
+Metoda
+Opis
+/api/profiles
+GET
+Wyszukaj lub pobierz profile. Można filtrować np. po adresie email, numerze telefonu lub innych właściwościach. Zwraca paginowaną listę profilów spełniających kryteria.
+/api/profiles
+POST
+Utwórz nowy profil kontaktu, podając podstawowe dane (co najmniej unikalny identyfikator: email lub phone). Zwraca ID utworzonego profilu.
+/api/profiles/{profile_id}
+GET
+Pobierz wszystkie informacje o danym profilu (łącznie z wszystkimi właściwościami niestandardowymi, metrykami itp.).
+/api/profiles/{profile_id}
+PATCH
+Zaktualizuj istniejący profil – można modyfikować lub dodać właściwości (atrybuty) profilu, np. zmienić nazwisko, dodać custom property.
+/api/profiles/{profile_id}
+POST
+Create or Update profil – API oferuje również wygodny endpoint idempotentny, który utworzy nowy profil jeśli nie istnieje, lub zaktualizuje jeśli istnieje (rozpoznając profil po e-mailu lub innych identyfikatorach).
+/api/profiles/merge
+POST
+Połącz dwa profile (zduplikowane kontakty) w jeden – wskazujemy ID profilu głównego oraz profilu do wchłonięcia.
+/api/profiles/{id}/lists
+GET
+Pobierz listy, do których należy dany profil (IDs lub pełne obiekty list). Pozwala zobaczyć subskrypcje danego kontaktu .
+/api/profiles/{id}/segments
+GET
+Pobierz segmenty, w których znajduje się profil (zgodnie z dynamicznymi warunkami).
+/api/profiles-bulk-imports
+POST
+Bulk Import Profiles – rozpocznij asynchroniczny import dużej liczby profilów. Przyjmuje plik CSV lub listę profilów do dodania/aktualizacji w paczkach (użyteczne przy migracji dużych baz danych).
+/api/profiles-bulk-imports/{job_id}
+GET
+Sprawdź status zadania importu profilów (w toku, zakończone, z ewentualnymi błędami do pobrania).
+Zgody (Subscriptions API): /api/subscribe-bulk
+POST
+Zbiorcze zapisanie profilów na listę (np. zmiana zgody e-mail) – istnieją oddzielne endpointy do subscribe/unsubscribe wielu kontaktów jednocześnie .
+Suppressions: /api/suppress-bulk
+POST
+Zbiorcze wypisanie profilów globalnie (suppress) – oznacza usunięcie zgód marketingowych tych profilów. Istnieje też unsuppress (przywrócenie zgód) analogicznie .
+W kontekście profili warto wspomnieć, że istnieją dedykowane endpoints klienta (Client API) do identyfikacji i śledzenia profili. Klasyczne przykłady to Identify (przypisanie danych do profilu na podstawie ciasteczka/identyfikatora użytkownika) oraz Track (przesłanie zdarzenia związanego z profilem). Te operacje na front-endzie realizuje się zazwyczaj za pomocą bibliotek JavaScript lub SDK mobilnego (wykorzystując publiczny klucz), ale można też wywoływać je bezpośrednio na endpointach /client/identify i /client/track (w starszym API: /api/identify i /api/track z parametrem ?token=<Public API Key>). W nowym API rolę przesyłania zdarzeń przejął głównie Events API (server-side), natomiast Identify nadal funkcjonuje do łączenia danych sesyjnych z profilem.
+
+Profile – dodatkowe funkcje: Klaviyo obsługuje tokeny push (Push Tokens) przypisane do profili (dla powiadomień push na urządzenia mobilne). API udostępnia endpoints do dodawania/aktualizacji tokenów push dla profilu oraz ich usuwania. Ponadto, dla realizacji przepisów o prywatności (np. RODO) istnieje Data Privacy API – umożliwia zgłoszenie żądania usunięcia profilu (Request Profile Deletion).
+
+Zdarzenia i metryki (Events API & Metrics API)
+
+Zdarzenia (Events) w Klaviyo reprezentują działania podjęte przez użytkowników lub system (np. “Placed Order”, “Clicked Email”, “Viewed Product”). Każde zdarzenie jest powiązane z profilem (jeśli dotyczy użytkownika) oraz typem metryki. Metryka (Metric) to rodzaj zdarzenia – np. “Placed Order” to metryka, a pojedynczy wystąpienie (konkretne zamówienie) to zdarzenie. Klaviyo rozróżnia w API operacje na surowych zdarzeniach i operacje na metrykach (zagregowane lub definicje).
+
+Events API służy do rejestrowania nowych zdarzeń i odczytu istniejących zdarzeń:
+	•	Tworzenie zdarzeń: Endpoint /api/events (POST) pozwala przesłać nowe zdarzenie do Klaviyo. W body należy podać co najmniej identyfikator metryki (np. specjalny UUID danej metryki lub nazwa custom metric) oraz identyfikator profilu lub inne cechy zdarzenia (czas, właściwości zdarzenia). Ten endpoint zastępuje dawny Track API (w v1/v2 zdarzenia były tworzone przez /track z tokenem). Nowe API umożliwia wysyłanie zdarzeń z autoryzacją kluczem prywatnym i daje bogatsze możliwości (np. od razu przypisanie zdarzenia do profilu po ID lub innych identyfikatorach).
+	•	Odczyt zdarzeń: Można pobierać listę zdarzeń przez /api/events (GET) – z opcjami filtrowania po typie metryki, przedziale czasu, ID profilu itp. Pojedyncze zdarzenie można pobrać przez /api/events/{event_id} (GET). Dostępne są też endpointy pomocnicze pozwalające nawigować relacje: np. /api/events/{id}/metric da metrykę, której dotyczy zdarzenie, a /api/events/{id}/profile – profil powiązany ze zdarzeniem.
+
+Metrics API udostępnia informacje o samych metrykach oraz umożliwia agregowanie danych zdarzeń:
+	•	Lista metryk: /api/metrics (GET) zwraca wszystkie metryki zarejestrowane w koncie (np. standardowe jak Opened Email, Clicked Email, Placed Order, jak i własne wydarzenia). Każda metryka ma unikalne ID, nazwę i typ.
+	•	Tworzenie metryk niestandardowych: W Klaviyo większość metryk powstaje automatycznie przy śledzeniu zdarzeń (np. po pierwszym wywołaniu zdarzenia o nowej nazwie utworzy się “Custom Metric”). Jednak API umożliwia także jawne utworzenie metryki poprzez /api/custom-metrics (POST) i nadanie jej nazwy. To przydatne, gdy chcemy z góry zdefiniować pewne zdarzenia.
+	•	Pobieranie metryki: /api/metrics/{metric_id} (GET) zwraca szczegóły danej metryki (m.in. nazwę, opis, ostatnie wystąpienie, itp.).
+	•	Agregacje metryk (reporty): Zamiast ręcznie sumować zdarzenia, można użyć Query Metric Aggregates – endpointu /api/metrics/{metric_id}/aggregates (POST), który przyjmuje parametry filtrujące (zakres dat, przedział agregacji – dzienny, miesięczny itp.) i zwraca zagregowane statystyki, np. sumę wartości zakupów lub liczbę unikalnych zdarzeń spełniających warunek. Ponadto istnieje osobny Reporting API, który oferuje gotowe endpointy do raportowania np. wartości kampanii, flow, segmentów: np. Query Campaign Values, Query Flow Series itp. – patrz sekcja “Reporting API” w dokumentacji.
+	•	Mapped Metrics: Klaviyo udostępnia mechanizm mapowania metryk – np. odwzorowanie niestandardowej metryki na istniejącą – oraz Custom Metrics (jak wyżej). Te zaawansowane funkcje są używane rzadziej, ale wspomagane przez API (np. endpointy /api/mapped-metrics do odczytu i aktualizacji mapowań metryk).
+
+Rate limiting: Wysyłanie zdarzeń i pobieranie ich podlega limitom. Dla zapisu zdarzeń (POST /events) limit wynosi zwykle 75 żądań/sekundę (burst) i 700/min (steady), a w przypadku użycia bulk (Batch create events) – np. 3 żądania/s, 60/min z możliwością wysłania po 100 zdarzeń w jednym żądaniu (co efektywnie daje 300 zdarzeń/s) – to optymalna metoda masowego importu zdarzeń.
+
+Flows (Automatyzacje)
+
+Flows to automatyzacje/sekcje w Klaviyo – sekwencje wiadomości uruchamiane przez określone wyzwalacze (np. dołączenie do listy, wykonanie zdarzenia, określona data urodzin, itp.). API flow pozwala zarządzać definicjami tych automatyzacji oraz ich elementami. Możliwe jest programowe tworzenie prostych flow, chociaż zazwyczaj flow tworzy się w interfejsie, a API służy głównie do odczytu lub ewentualnie do dynamicznego włączania/wyłączania flow.
+
+Scope: flows:read / flows:write. Najważniejsze endpointy związane z flow:
+Endpoint
+Metoda
+Opis
+/api/flows
+GET
+Pobierz listę wszystkich flow (zwraca podstawowe informacje: ID, nazwa, status aktywny/wyłączony, typ wyzwalacza).
+/api/flows
+POST
+Utwórz nowy flow – umożliwia zdefiniowanie automatyzacji poprzez podanie nazwy, typu wyzwalacza (np. “manual”, “list”, “metric”), segmentu/listy wyzwalającej itp. Uwaga: Tworzenie flow złożonych (z wieloma krokami) przez API jest skomplikowane – zazwyczaj tworzy się flow bazowy, a następnie dodaje akcje.
+/api/flows/{flow_id}
+GET
+Pobierz szczegóły wybranego flow (w tym strukturę kroków/akcji, wyzwalacz, status, segment/listę powiązaną jeśli dotyczy).
+/api/flows/{flow_id}/status
+PATCH
+Zaktualizuj status flow – aktywuj (live) lub wstrzymaj (draft) dany flow. Pozwala to np. włączać/wyłączać automatyzacje programowo.
+/api/flows/{flow_id}
+DELETE
+Usuń flow (usunie całą automatyzację – ostrożnie w użyciu).
+/api/flow-actions/{action_id}
+GET
+Pobierz szczegóły konkretnej akcji w flow (np. jednego kroku wysyłki e-mail lub opóźnienia). Każdy element (akcja, filtr, opóźnienie) ma własne ID.
+/api/flow-actions/{action_id}
+PATCH
+Zaktualizuj akcję w flow – np. zmień treść lub ustawienia opóźnienia danej akcji. Dotyczy to głównie akcji typu wiadomość (email/SMS) lub np. warunków.
+/api/flows/{flow_id}/actions
+GET
+Pobierz listę wszystkich akcji (kroków) w ramach danego flow, wraz z ich ID i typem (np. email, time delay, conditional split).
+/api/flows/{flow_id}/tags
+GET
+Pobierz listę tagów przypisanych do danego flow (etykiety organizacyjne).
+(Ponadto istnieją endpointy do zarządzania wiadomościami flow podobnie jak w kampaniach – np. pobranie szablonu przypisanego do wiadomości itp. – często jednak łatwiej zarządzać treściami przez API szablonów opisane niżej).
+Flow mogą być wyzwalane różnymi zdarzeniami: dołączeniem do listy, zmianą segmentu, wykonaniem metryki (zdarzenia), albo ręcznie. API nie bezpośrednio “odpala” flow (to dzieje się automatycznie w systemie Klaviyo na podstawie definicji), ale poprzez API można np. utworzyć trigger-based flow powiązany z określoną metryką. W takim przypadku wysłanie zdarzenia przez Events API (np. zdarzenie “Appointment Reminder”) automatycznie uruchomi flow, jeśli jest odpowiednio skonfigurowany.
+
+Nowością w API Klaviyo są “Custom Actions” w flow – pozwalają one uruchamiać własne skrypty (np. w Pythonie lub Node) jako akcje w automatyzacji, co otwiera dodatkowe możliwości integracji. Te zaawansowane akcje konfiguruje się jednak raczej w panelu, nie przez REST API (na razie).
+
+Tagowanie (Tags API)
+
+Tagi to etykiety organizacyjne, którymi można oznaczać różne obiekty w Klaviyo: kampanie, flow, listy, segmenty (a także np. szablony). Służą one wyłącznie uporządkowaniu i kategoryzacji elementów, np. można oznaczyć tagiem “Promocja zimowa” kilka powiązanych kampanii i flow, albo tagiem “VIP” listę i segment związane z kluczowymi klientami. Tag to prosta para ID + nazwa, opcjonalnie przypisany do grupy tagów (tag group).
+
+Scope: tags:read / tags:write. Główne endpointy tagów:
+Endpoint
+Metoda
+Opis
+/api/tags
+GET
+Pobierz wszystkie tagi utworzone na koncie (można filtrować po nazwie). Zwraca max 50 tagów per page domyślnie .
+/api/tags
+POST
+Utwórz nowy tag – nadaj nazwę oraz (opcjonalnie) przypisz do istniejącej grupy tagów. Konto może mieć maks. 500 tagów .
+/api/tags/{tag_id}
+GET
+Pobierz szczegóły tagu o danym ID (nazwa, grupa tagów).
+/api/tags/{tag_id}
+PATCH
+Zaktualizuj nazwę tagu (lub przypisz go do innej grupy tagów).
+/api/tags/{tag_id}
+DELETE
+Usuń tag (odłączy go od wszystkich obiektów, które były nim oznaczone).
+Przypisywanie tagów: /api/tag-campaigns
+POST
+Przypisz tag do jednej lub więcej kampanii – w body podaje się tag_id oraz listę campaign_id do oznaczenia . Podobne endpointy istnieją dla tagowania flow, list i segmentów.
+/api/tag-campaigns
+DELETE
+Usuń tag z podanych kampanii (analogicznie jak wyżej).
+/api/tag-flows / tag-lists / tag-segments
+POST/DELETE
+Analogiczne operacje przypisywania/odłączania tagów dla flow, list i segmentów, z użyciem odpowiednich endpointów.
+Grupy tagów: /api/tag-groups
+GET
+Lista wszystkich grup tagów (są to kategorie pogrupowania tagów, np. “Pora roku”, “Rodzaj promocji”).
+/api/tag-groups
+POST
+Utwórz nową grupę tagów (np. o nazwie “Dział marketingu”).
+/api/tag-groups/{id}
+PATCH/DELETE
+Zaktualizuj lub usuń grupę tagów (usunięcie grupy nie usuwa samych tagów, ale pozbawia je przyporządkowania).
+Tagi i grupy tagów zostały wprowadzone niedawno (w połowie 2025) i ułatwiają organizację rozrastających się kont, gdzie liczba kampanii czy automatyzacji jest duża. W API istnieją również endpointy pomocnicze zwracające np. które obiekty są oznaczone danym tagiem – np. Get Campaign IDs for Tag (listuje wszystkie kampanie z danym tagiem) lub analogiczne dla list/segmentów. Dzięki temu można np. pobrać wszystkie elementy oznaczone konkretną etykietą.
+
+Katalog produktów (Catalogs API)
+
+Klaviyo umożliwia przechowywanie katalogów produktów – dotyczy to głównie sklepów e-commerce, gdzie produkty (oraz kategorie produktów, warianty itp.) są synchronizowane do Klaviyo w celu wykorzystania w kampaniach (np. dynamiczne bloki rekomendacji) lub do wysyłki powiadomień Back-in-Stock. Catalogs API służy do zarządzania tymi danymi produktowymi w Klaviyo.
+
+Scope: catalogs:read / catalogs:write. Główne sekcje katalogowe w API to Items (produkty), Categories (kategorie), Variants (warianty produktów) oraz Back in Stock. Najważniejsze endpointy:
+	•	Produkty (Items):
+	•	/api/catalog-items (GET) – pobierz listę produktów w katalogu. Można filtrować i paginować wyniki.
+	•	/api/catalog-items (POST) – dodaj nowy produkt do katalogu (z podstawowymi polami jak name, SKU, URL, cena itp.).
+	•	/api/catalog-items/{id} (GET/PATCH/DELETE) – odczytaj/aktualizuj/usuń konkretny produkt. Aktualizacja pozwala zmienić np. cenę, opis.
+	•	Bulk operations: Dla masowych aktualizacji API udostępnia asynchroniczne joby: np. Bulk Create Catalog Items (POST) do masowego dodania wielu produktów na raz, Bulk Update Catalog Items i Bulk Delete Catalog Items, wraz z endpointami do sprawdzania statusu tych zadań (np. /bulk-create-catalog-items-jobs/{job_id} GET).
+	•	Relacje produkt-kategoria: Endpointy umożliwiają powiązanie produktów z kategoriami, np. Add Categories to Catalog Item (POST) przypisuje produkt do kategorii, Get Category IDs for Catalog Item (GET) listuje ID kategorii dla danego produktu, itp.
+	•	Kategorie (Categories):
+	•	/api/catalog-categories (GET/POST) – podobnie jak produkty, można pobierać listę kategorii oraz tworzyć nowe kategorie produktowe (np. “Buty”, “Promocje 2026”).
+	•	/api/catalog-categories/{id} (GET/PATCH/DELETE) – operacje na pojedynczej kategorii (zmiana nazwy, usunięcie).
+	•	Bulk categories: analogicznie istnieją Bulk Create/Update/Delete Catalog Categories dla hurtowych operacji na wielu kategoriach jednocześnie (np. import z systemu e-commerce).
+	•	Relacje kategoria-produkt: np. Add Items to Catalog Category (POST) dodaje wiele produktów do wskazanej kategorii, Remove Items from Catalog Category usuwa powiązanie produktów z kategorią, itp.
+	•	Warianty (Variants):
+	•	Jeśli produkty mają warianty (np. rozmiary, kolory), API umożliwia ich zarządzanie: /api/catalog-variants (GET/POST) i /api/catalog-variants/{id} (GET/PATCH/DELETE) – podobnie jak dla produktów. Warianty zawierają specyficzne atrybuty (np. SKU wariantu, cena, stan magazynu).
+	•	Bulk create/update/delete dla wariantów również jest dostępne (podobnie jak dla produktów, z jobami).
+	•	Relacje: Get Variants for Catalog Item (GET) – pobierz wszystkie warianty danego produktu.
+	•	Back in Stock:
+	•	Klaviyo oferuje mechanizm powiadomień “Back in Stock” – subskrypcji na dostępność produktu. API udostępnia endpoint /api/back-in-stock-subscriptions (POST) do zapisu subskrybenta chętnego na powiadomienie gdy produkt wróci do magazynu. Wymaga to włączenia tej funkcjonalności i posiadania synchronizacji stanów magazynowych.
+
+Kupony (Coupons API)
+
+API kuponów umożliwia zarządzanie kodami rabatowymi w Klaviyo. W systemie tym istnieją Kupony (Coupons) jako zbiorcze pojęcie promocji, oraz Kody kuponów (Coupon Codes) – pojedyncze kody, które mogą być wygenerowane masowo. Zazwyczaj najpierw tworzy się kupon (np. “SUMMER-SALE-10”) z określonym typem rabatu, datą ważności itp., a następnie generuje pulę unikalnych kodów (np. do jednorazowego użycia) powiązanych z tym kuponem.
+
+Scope: coupons:read/write, coupon-codes:read/write. Podstawowe endpointy:
+Endpoint
+Metoda
+Opis
+/api/coupons
+GET
+Pobierz listę wszystkich kuponów (promocji) na koncie.
+/api/coupons
+POST
+Utwórz nowy kupon – określ nazwę promocji, typ rabatu (kwotowy/procentowy), wartość, datę ważności, itp.
+/api/coupons/{id}
+GET
+Pobierz szczegóły konkretnego kuponu (w tym parametry zniżki).
+/api/coupons/{id}
+PATCH
+Zaktualizuj ustawienia kuponu (np. zmień datę ważności, aktywuj/dezaktywuj).
+/api/coupons/{id}
+DELETE
+Usuń kupon (usuwa też powiązane kody).
+/api/coupons/{id}/codes
+GET
+Pobierz listę kodów powiązanych z danym kuponem (paginacja, bo kodów może być wiele).
+/api/coupon-codes
+POST
+Wygeneruj nowy kod kuponu – utwórz pojedynczy kod powiązany z istniejącym kuponem (lub wiele kodów poprzez bulk). W body podaje się kupon nadrzędny.
+/api/coupon-codes/{code_id}
+GET
+Pobierz szczegóły konkretnego kodu kuponu (kod tekstowy, czy użyty, itp.).
+/api/coupon-codes/{code_id}
+PATCH
+Zmień status kodu (np. dezaktywuj pojedynczy kod).
+/api/coupon-codes/{code_id}
+DELETE
+Usuń pojedynczy kod kuponu.
+Bulk codes: /api/coupon-codes-bulk
+POST
+Masowe wygenerowanie wielu kodów dla kuponu – np. 100 jednorazowych kodów. Tworzy zadanie, które można monitorować.
+/api/coupon-codes-bulk/{job_id}
+GET
+Sprawdź status zadania bulk generation (postęp tworzenia kodów).
+Ta funkcjonalność bywa używana do kampanii, gdzie każdy odbiorca dostaje unikalny kod rabatowy. Klaviyo może zarządzać tymi kodami i wstawiać je do treści maili (np. poprzez tagi szablonów). API kuponów pozwala na integrację z zewnętrznymi systemami (np. e-commerce) – kody mogą być generowane w Klaviyo i następnie weryfikowane po stronie sklepu w momencie użycia.
+
+Szablony i treści (Templates API oraz Universal Content)
+
+API szablonów umożliwia tworzenie i edycję szablonów wiadomości (e-mail lub SMS) poza interfejsem Klaviyo. Deweloper może pobrać kod HTML szablonu, zmodyfikować go, renderować z danymi testowymi czy duplikować.
+	•	Templates API: Dotyczy tradycyjnych szablonów email/SMS. Główne endpointy:
+	•	/api/templates (GET) – pobierz listę wszystkich szablonów (uniwersalnych).
+	•	/api/templates (POST) – utwórz nowy szablon (np. e-mail) podając nazwę i treść (HTML / tekst).
+	•	/api/templates/{id} (GET) – pobierz zawartość szablonu o danym ID (kod HTML, ustawienia).
+	•	/api/templates/{id} (PATCH) – zaktualizuj szablon (podmień nazwę lub treść HTML).
+	•	/api/templates/{id} (DELETE) – usuń szablon (jeśli nie jest używany).
+	•	/api/templates/{id}/render (POST) – renderuj szablon z danymi – zwraca wygenerowany HTML po podstawieniu przykładowych danych (przydatne do testów personalizacji).
+	•	/api/templates/{id}/clone (POST) – sklonuj istniejący szablon (duplikuje go z nową nazwą).
+	•	Universal Content API: Klaviyo wprowadziło również pojęcie uniwersalnych treści – są to treści, które mogą być współdzielone między kanałami (np. bloki używane zarówno w email, jak i SMS). Universal Content API pozwala zarządzać tymi blokami:
+	•	/api/universal-content (GET/POST) – pobieranie i tworzenie elementów treści,
+	•	/api/universal-content/{id} (GET/PATCH/DELETE) – operacje na poszczególnym elemencie treści uniwersalnej.
+
+Te zasoby pozwalają programistycznie utrzymywać spójną treść w wielu kampaniach (np. zaktualizować stopkę we wszystkich szablonach). W kontekście pytania, kluczowe jest, że istnieją API do pełnej obsługi treści marketingowych: zarówno tradycyjnych szablonów, jak i nowego podejścia z uniwersalnymi bloczkami contentu.
+
+Formularze (Forms API)
+
+Klaviyo posiada własny system formularzy popup/embedded (tzw. Klaviyo Forms) do zapisu na listy, zbierania zgód itp. API formularzy umożliwia dostęp do tych formularzy – np. aby pobrać definicję formularza i wyświetlić go własnym sposobem lub zarządzać formularzami programowo.
+
+Endpointy formularzy (scope: forms:read/write):
+	•	/api/forms (GET) – lista formularzy utworzonych na koncie (typu popup, fly-out itp.).
+	•	/api/forms (POST) – utwórz nowy formularz (można zdefiniować podstawowe właściwości, jednak skomplikowany wygląd zwykle tworzy się w edytorze Klaviyo).
+	•	/api/forms/{id} (GET) – pobierz szczegóły formularza (w tym treść HTML/CSS/JS do wyświetlenia, targeting, itp.).
+	•	/api/forms/{id} (DELETE) – usuń formularz.
+	•	Dodatkowo: /api/form-versions – formularze mają wersje, więc są endpointy do pobrania poszczególnych wersji, listy wersji danego formularza itp., aby móc ewentualnie wrócić do poprzedniej wersji czy opublikować wersję testową.
+
+Z punktu widzenia integracji, część operacji na formularzach (jak np. wyzwalanie ich wyświetlenia na stronie) realizuje się raczej przez mechanizmy klienckie (JS), jednak API daje możliwość np. pobrania danych analitycznych formularza, listy zgłoszeń itp. (Te dane analityczne jednak mogą być także dostępne przez Reporting API – np. Query Form Values/Series do wyciągania statystyk wyświetleń i konwersji formularzy).
+
+Webhooki (Webhooks API)
+
+Webhooki systemowe w Klaviyo pozwalają na subskrypcję zdarzeń – tzn. gdy w Klaviyo coś się wydarzy (np. nowy profil zostanie dodany do listy, ktoś złoży zamówienie – event, profil poprosi o usunięcie danych, itp.), Klaviyo może wysłać zgłoszenie HTTP (webhook) do zewnętrznego systemu. Webhooks API umożliwia programowe zarządzanie webhookami: ich tworzenie, edycję i usuwanie.
+
+Uwaga: Tworzenie webhooków przez API jest obecnie możliwe głównie dla partnerów korzystających z OAuth (aplikacje publiczne) oraz zaawansowanych integracji w ramach Klaviyo Development Platform. Scope dla webhooków to zapewne webhooks:read/write (choć dokumentacja nie wymienia osobno, może wchodzić w zakres accounts lub odpowiednich kategorii zdarzeń).
+
+Kluczowe endpointy:
+	•	/api/webhooks (GET) – pobierz listę zarejestrowanych webhooków.
+	•	/api/webhooks (POST) – utwórz nowy webhook – w body definiuje się m.in. adres URL endpointu, zdarzenia (topics), które mają go wyzwalać (np. profile.list_added), format (JSON), i opcje uwierzytelnienia (np. signature secret).
+	•	/api/webhooks/{id} (GET) – pobierz szczegóły konkretnego webhooka.
+	•	/api/webhooks/{id} (PATCH) – zmień ustawienia webhooka (np. URL lub aktywne/nieaktywne).
+	•	/api/webhooks/{id} (DELETE) – usuń webhook.
+	•	/api/webhook-topics (GET) – pobierz listę dostępnych tematów (topics) webhooków, czyli typów zdarzeń, na które można się zapisać (np. campaign.sends, profile.added_to_list itp.).
+	•	/api/webhook-topics/{topic_id} (GET) – odczytaj szczegóły danego typu zdarzenia (np. opis payloadu).
+
+Dzięki webhookom można w czasie rzeczywistym reagować w swoim systemie na zdarzenia z Klaviyo – np. gdy ktoś zapisze się na listę (webhook informuje o nowym subskrybencie, co może zapoczątkować proces w CRM), lub gdy ktoś dokona zakupu (można synchronizować to do bazy lojalnościowej). Alternatywnie do webhooków można okresowo odpytwać API (np. Events API) – jednak webhooki są bardziej efektywne dla czasu rzeczywistego.
+
+Custom Objects (niestandardowe obiekty danych)
+
+Najnowszym dodatkiem w Klaviyo jest Custom Objects API – pozwalające tworzyć i zarządzać własnymi obiektami danych powiązanymi z profilami. W praktyce umożliwia to przechowywanie w Klaviyo dodatkowych danych (innych niż predefiniowane profile/zdarzenia), np. historii rezerwacji, informacji o produktach dla konkretnego klienta, danych z zewnętrznych systemów, które potem można wykorzystać w segmentacji lub personalizacji.
+
+Custom Objects składają się z:
+	•	Typów obiektów (Object Types) – czyli definicji schematów danych (podobnie jak tabela w bazie, z polami i typami danych).
+	•	Schematów obiektów (Object Schemas) – szczegółowych definicji pól, powiązań między typami (relacje).
+	•	Źródeł danych (Data Sources) – konkretne instancje przechowujące rekordy danego typu (coś jak kolekcje dokumentów).
+	•	Rekordów źródła danych (Data Source Records) – konkretne wpisy danych (wiersze).
+
+Obecnie (2026) ta funkcjonalność jest częściowo w Beta (definiowanie typów i schematów), a częściowo GA (ingestowanie rekordów danych). Wymagany scope to prawdopodobnie profiles:write dla powiązań oraz osobne scope dla custom objects (dokumentacja dookreśla scope per typ utworzonego obiektu).
+
+Kluczowe endpointy:
+	•	Typy obiektów: /api/object-types (GET/POST) – pozwala pobrać istniejące typy lub utworzyć nowy typ obiektu. Przykład: utworzenie typu “Rezerwacja” z własnymi polami.
+	•	Schematy obiektu: /api/object-schemas (POST/PATCH/GET) – definiowanie pól dla utworzonego typu, np. pola: data_rezerwacji (date), liczba_osób (integer) itp. Można też tworzyć relacje między schematami (np. powiązać typ “Rezerwacja” z profilem klienta za pomocą klucza zewnętrznego). Te operacje są w fazie beta i mogą ulec zmianie.
+	•	Źródła danych: /api/data-sources (GET/POST) – reprezentują kolekcję danych dla danego typu. Można np. utworzyć źródło danych “Rezerwacje 2024” typu Rezerwacja. (Dokumentacja nie precyzuje w pytaniu, ale generalnie data source jest tworzony automatycznie z typem).
+	•	Rekordy danych:
+	•	/api/data-source-records (POST) – utwórz rekord w źródle danych (nowy obiekt niestandardowy). Nowy endpoint (2026) pozwala wstawiać pojedyncze rekordy z większą przepustowością (75/s).
+	•	/api/data-source-records/bulk-create (POST) – istniejący endpoint do tworzenia wielu rekordów naraz (batch do 500 rekordów, mniejszy rate limit ale lepszy throughput w sumie).
+	•	Możliwe są też endpointy do odczytu rekordów (GET /api/data-sources/{id}/records), ale w dokumentacji przyjęto raczej, że dane custom objects będą pobierane poprzez powiązania z profilami lub dedykowane zapytania.
+
+Zastosowanie: Custom Objects to zaawansowana funkcja – np. można przechować historię transakcji offline klienta i następnie tworzyć segmenty w oparciu o te dane (co dotąd wymagało nadużycia profilowych custom properties lub metryk). W najnowszej aktualizacji (2026-01) usprawniono dodawanie pojedynczych rekordów, aby integracje czasu rzeczywistego (np. jeden event = jeden custom object record) były wydajniejsze.
+
+Podsumowanie
+
+API Klaviyo jest bardzo rozbudowane i obejmuje niemal wszystkie aspekty platformy: od zarządzania kampaniami, listami/segmentami i profilami, przez śledzenie zdarzeń i analizę metryk, po nowsze możliwości jak tagowanie zasobów, webhooks, własne obiekty danych czy integrację katalogów produktowych. Aktualna generacja API (od wersji 2023-***) cechuje się spójnością i korzysta z nagłówka revision do wersjonowania. Autoryzacja odbywa się głównie poprzez prywatny klucz z odpowiednimi scope’ami w nagłówku Authorization, a dla partnerów dostępny jest mechanizm OAuth 2.0. Dla operacji front-end (tracking) używa się 6-znakowego publicznego klucza (Site ID).
+
+W odpowiedzi na ostatnie zmiany, deweloperzy powinni zwrócić uwagę na migrację z przestarzałych endpointów v1/v2 do nowych odpowiedników (przed połową 2024) oraz na nowe funkcjonalności, jakie Klaviyo dodało: m.in. system tagów do organizacji, obsługa wielokanałowa kampanii (SMS/push), rozbudowane API raportowe, a także Custom Objects pozwalające lepiej modelować dane biznesowe wewnątrz Klaviyo. Wszystkie te zasoby są dokumentowane na bieżąco w changelogu deweloperskim Klaviyo i warto go śledzić, aby utrzymywać integracje zgodnie z najnowszymi możliwościami platformy.
+
+Źródła: Oficjalna dokumentacja Klaviyo Developers (API Reference, Changelog), poradniki Klaviyo i artykuły eksperckie.

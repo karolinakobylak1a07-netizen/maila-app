@@ -128,6 +128,10 @@ model ClientProfile {
     id         String              @id @default(cuid())
     name       String
     status     ClientProfileStatus @default(ACTIVE)
+    senderDomain String?           @map("sender_domain")
+    ownerEmail String?             @map("owner_email")
+    internalEmails String[]        @default([]) @map("internal_emails")
+    internalProfileFilter Json?    @map("internal_profile_filter")
     archivedAt DateTime?           @map("archived_at")
     createdAt  DateTime            @default(now()) @map("created_at")
     updatedAt  DateTime            @updatedAt @map("updated_at")
@@ -138,10 +142,29 @@ model ClientProfile {
     discoveryOnboarding DiscoveryOnboarding?
     klaviyoSyncRuns KlaviyoSyncRun[]
     klaviyoInventory KlaviyoInventoryItem[]
+    auditReports AuditReport[]
 
     @@index([name], map: "idx_client_profiles_name")
     @@index([status], map: "idx_client_profiles_status")
     @@map("client_profiles")
+}
+
+model AuditReport {
+    id        String   @id @default(cuid())
+    clientId  String   @map("client_id")
+    type      String   @default("audit_30d_plan")
+    status    String   @default("draft")
+    version   Int      @default(1)
+    title     String?
+    content   Json
+    snapshot  Json?
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    client ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+    @@index([clientId, createdAt], map: "idx_audit_reports_client_created_at")
+    @@map("audit_reports")
 }
 
 model StrategicDecision {
