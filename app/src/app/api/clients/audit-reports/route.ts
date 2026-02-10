@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   }
 
   await ensureAuditReportsTable();
-  const [{ next_version }] = await db.$queryRawUnsafe<
+  const result = await db.$queryRawUnsafe<
     Array<{ next_version: number }>
   >(
     `SELECT COALESCE(MAX(version), 0) + 1 AS next_version
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID();
   const title = body.title ?? "Plan 30 dni";
   const status = "draft";
-  const version = next_version ?? 1;
+  const version = result[0]?.next_version ?? 1;
 
   await db.$executeRawUnsafe(
     `INSERT INTO audit_reports (id, client_id, type, status, version, title, content, snapshot)
