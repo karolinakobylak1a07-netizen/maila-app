@@ -4786,9 +4786,9 @@ export function KlaviyoListAuditGuide() {
                           </div>
 
                           <div className="grid gap-3 lg:grid-cols-3">
-                            {renderSegmentTile("Ryzyko", segmentRisks, smallSample)}
-                            {renderSegmentTile("Luki", segmentGaps, smallSample)}
-                            {renderSegmentTile("Do wprowadzenia", finalImprovements, smallSample)}
+                            {renderSegmentTile("Ryzyko", segmentRisks, smallSample ?? false)}
+                            {renderSegmentTile("Luki", segmentGaps, smallSample ?? false)}
+                            {renderSegmentTile("Do wprowadzenia", finalImprovements, smallSample ?? false)}
                           </div>
                         </>
                       );
@@ -8215,37 +8215,3 @@ export function KlaviyoListAuditGuide() {
     </section>
   );
 }
-    if (smallSample) {
-      actions.push({
-        id: "baseline-data",
-        phase: "growth",
-        kind: "baseline",
-        title: "Zbudować bazową warstwę danych",
-        why: "próba jest zbyt mała do silnych wniosków",
-        action: "Ustawić podstawowy rytm kampanii i flow, aby zebrać dane operacyjne",
-        effect: "wiarygodna analiza po 30–60 dniach",
-        metric: "min. 1 kampania/tydz. + podstawowy flow",
-        impact: 3,
-        risk: 3,
-        effort: 2,
-      });
-    }
-
-    const limitFlowPerWeek = (items: typeof actions) => {
-      const flowItems = items.filter((item) => item.kind === "flow");
-      if (flowItems.length <= 1) return items;
-      return items.filter((item) => item.kind !== "flow").concat(flowItems.slice(0, 1));
-    };
-
-    const criticalItems = (() => {
-      const base = actions.filter((item) => item.phase === "critical");
-      if (reputationRisk) {
-        return base.filter((item) => item.kind === "reputation" || item.kind === "segment");
-      }
-      return base;
-    })();
-
-    const growthItems = actions.filter((item) => item.phase === "growth");
-    const optimizationItems = smallSample
-      ? actions.filter((item) => item.phase === "optimization" && item.kind === "baseline")
-      : actions.filter((item) => item.phase === "optimization");
