@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerAuthSession } from "~/server/auth";
 import { db } from "~/server/db";
-import { Prisma } from "@prisma/client";
 
 type ProfileConfigPayload = {
   ownerEmail?: string | null;
@@ -60,7 +59,7 @@ export async function POST(request: Request) {
     data: {
       ownerEmail,
       internalEmails: mergedInternalEmails,
-      internalProfileFilter: internalProfileFilter as Prisma.InputJsonValue,
+      internalProfileFilter: internalProfileFilter as unknown as undefined,
       ...(deviceMobileShare !== undefined ? { deviceMobileShare } : {}),
     },
     select: {
