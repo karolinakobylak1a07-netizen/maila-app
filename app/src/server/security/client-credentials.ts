@@ -68,9 +68,38 @@ export const saveClientCredentials = async (params: {
     encrypted.klaviyoPublicApiKey = encryptSecret(merged.klaviyoPublicApiKey);
   }
 
+  // Check if actor exists in database, if not try to create them or set to null
+  let actorIdToUse = params.actorId;
+  try {
+    const actorExists = await db.user.findUnique({
+      where: { id: params.actorId },
+      select: { id: true },
+    });
+    if (!actorExists) {
+      // Try to create the user if they don't exist
+      try {
+        await db.user.upsert({
+          where: { id: params.actorId },
+          create: {
+            id: params.actorId,
+            name: "Developer",
+            email: "dev@example.com",
+          },
+          update: {},
+        });
+      } catch {
+        // If upsert fails, set actorId to null
+        actorIdToUse = null;
+      }
+    }
+  } catch {
+    // If checking user fails, set actorId to null
+    actorIdToUse = null;
+  }
+
   await db.auditLog.create({
     data: {
-      actorId: params.actorId,
+      actorId: actorIdToUse,
       eventName: EVENT_NAME,
       requestId: params.requestId,
       entityType: ENTITY_TYPE,
