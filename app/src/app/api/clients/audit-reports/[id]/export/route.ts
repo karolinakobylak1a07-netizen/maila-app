@@ -19,11 +19,16 @@ const ensureAuditReportsTable = async () => {
   `);
 };
 
-export async function GET(_request: Request, context: { params: { id: string } }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const session = await getServerAuthSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { id } = await params;
 
   await ensureAuditReportsTable();
   const [report] = await db.$queryRawUnsafe<
@@ -31,7 +36,7 @@ export async function GET(_request: Request, context: { params: { id: string } }
   >(
     `SELECT title, content
      FROM audit_reports WHERE id = $1 LIMIT 1`,
-    context.params.id,
+    id,
   );
 
   if (!report) {

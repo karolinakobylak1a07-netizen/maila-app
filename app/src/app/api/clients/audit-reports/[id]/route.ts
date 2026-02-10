@@ -19,11 +19,16 @@ const ensureAuditReportsTable = async () => {
   `);
 };
 
-export async function GET(_request: Request, context: { params: { id: string } }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const session = await getServerAuthSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { id } = await params;
 
   await ensureAuditReportsTable();
   const [report] = await db.$queryRawUnsafe<
@@ -40,7 +45,7 @@ export async function GET(_request: Request, context: { params: { id: string } }
   >(
     `SELECT id, title, status, version, content, snapshot, created_at, updated_at
      FROM audit_reports WHERE id = $1 LIMIT 1`,
-    context.params.id,
+    id,
   );
 
   if (!report) {
@@ -61,7 +66,10 @@ export async function GET(_request: Request, context: { params: { id: string } }
   });
 }
 
-export async function PATCH(request: Request, context: { params: { id: string } }) {
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const session = await getServerAuthSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -74,6 +82,8 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     return NextResponse.json({ error: "content required" }, { status: 400 });
   }
 
+  const { id } = await params;
+
   await ensureAuditReportsTable();
   await db.$executeRawUnsafe(
     `UPDATE audit_reports
@@ -82,7 +92,7 @@ export async function PATCH(request: Request, context: { params: { id: string } 
          content = $4::jsonb,
          updated_at = NOW()
      WHERE id = $1`,
-    context.params.id,
+    id,
     body.title ?? null,
     body.status ?? null,
     JSON.stringify(body.content),
