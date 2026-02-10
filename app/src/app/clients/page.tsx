@@ -33,7 +33,20 @@ npm run dev`}
     );
   }
 
-  const session = await getServerAuthSession();
+  // Check for auth bypass
+  const bypassAuth = process.env.BYPASS_AUTH === "true";
+
+  const session = bypassAuth
+    ? {
+        user: {
+          id: process.env.DEV_AUTH_USER_ID ?? "dev-user",
+          name: process.env.DEV_AUTH_USER_NAME ?? "Developer",
+          email: process.env.DEV_AUTH_USER_EMAIL ?? "dev@example.com",
+          image: null,
+          role: "OWNER" as const,
+        },
+      }
+    : await getServerAuthSession();
 
   if (!session?.user) {
     return (
