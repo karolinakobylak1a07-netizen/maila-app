@@ -626,7 +626,6 @@ function KlaviyoListAuditGuideContent({
   const [latestDebugTimestamp, setLatestDebugTimestamp] = useState<string | null>(null);
   const [exportingCategory, setExportingCategory] = useState<null | "all" | "verified" | "unverified">(null);
   const [ownerEmailInput, setOwnerEmailInput] = useState("");
-  const ownerEmailInput = useState("");
   const [internalEmailsInput, setInternalEmailsInput] = useState<string[]>([]);
   const [internalSaveStatus, setInternalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [autoSeededInternal, setAutoSeededInternal] = useState(false);
