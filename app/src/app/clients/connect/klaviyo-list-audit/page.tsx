@@ -1,3 +1,5 @@
+"use client";
+
 import { KlaviyoListAuditGuide } from "./klaviyo-list-audit";
 
 export default function KlaviyoListAuditPage() {
