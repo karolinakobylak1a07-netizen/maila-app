@@ -598,11 +598,15 @@ const readNumber = (...values: Array<unknown>) => {
   return null;
 };
 
-export function KlaviyoListAuditGuide() {
-  const searchParams = useSearchParams();
-  const queryClientId = searchParams.get("clientId") ?? "";
-  const queryClientName = searchParams.get("clientName") ?? "";
-  const queryClientEmail = searchParams.get("clientEmail") ?? "";
+function KlaviyoListAuditGuideContent({
+  queryClientId,
+  queryClientName,
+  queryClientEmail,
+}: {
+  queryClientId: string;
+  queryClientName: string;
+  queryClientEmail: string;
+}) {
   const [activeContact, setActiveContact] = useState<ActiveContact | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -622,6 +626,7 @@ export function KlaviyoListAuditGuide() {
   const [latestDebugTimestamp, setLatestDebugTimestamp] = useState<string | null>(null);
   const [exportingCategory, setExportingCategory] = useState<null | "all" | "verified" | "unverified">(null);
   const [ownerEmailInput, setOwnerEmailInput] = useState("");
+  const ownerEmailInput = useState("");
   const [internalEmailsInput, setInternalEmailsInput] = useState<string[]>([]);
   const [internalSaveStatus, setInternalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [autoSeededInternal, setAutoSeededInternal] = useState(false);
@@ -8213,5 +8218,21 @@ export function KlaviyoListAuditGuide() {
         </>
       )}
     </section>
+  );
+}
+
+export function KlaviyoListAuditGuideWrapper() {
+  const searchParams = useSearchParams();
+  const queryClientId = searchParams.get("clientId") ?? "";
+  const queryClientName = searchParams.get("clientName") ?? "";
+  const queryClientEmail = searchParams.get("clientEmail") ?? "";
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50">Ładowanie audytu list...</div>}>
+      <KlaviyoListAuditGuideContent
+        queryClientId={queryClientId}
+        queryClientName={queryClientName}
+        queryClientEmail={queryClientEmail}
+      />
+    </Suspense>
   );
 }
