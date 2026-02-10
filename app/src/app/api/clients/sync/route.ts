@@ -461,7 +461,9 @@ export async function POST(request: Request) {
     }
   }
   const storedApiKey = storedCredentials.klaviyoPrivateApiKey ?? "";
-  let apiKey = providedApiKey || storedApiKey || "";
+  // Fallback to environment variable if no API key provided or stored
+  const envApiKey = process.env.KLAVIYO_API_KEY ?? "";
+  let apiKey = providedApiKey || storedApiKey || envApiKey || "";
   const publicApiKey = providedPublicApiKey || storedCredentials.klaviyoPublicApiKey || "";
 
   const preflightErrors = buildPreflightErrors({
