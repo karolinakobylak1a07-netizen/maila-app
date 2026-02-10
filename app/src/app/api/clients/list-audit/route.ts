@@ -600,6 +600,11 @@ export async function POST(request: Request) {
     }
   }
 
+  // Fallback to environment variable if no API key found
+  if (!apiKey) {
+    apiKey = process.env.KLAVIYO_API_KEY ?? "";
+  }
+
   if (!apiKey) {
     return NextResponse.json(
       { error: "Brak zapisanego Klaviyo Private API Key dla aktywnego klienta." },
