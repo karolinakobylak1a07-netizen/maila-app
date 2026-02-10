@@ -682,16 +682,17 @@ export function KlaviyoListAuditGuide() {
     const campaignMetricRows = Array.isArray(report.campaignAudit?.metrics?.perCampaign)
       ? (report.campaignAudit?.metrics?.perCampaign as Array<Record<string, unknown>>)
       : [];
+    const campaignMetricItems = campaignMetricRows
+      .map((row) => ({
+        id: readString(row.campaignId, row.campaign_id, row.id),
+        stats:
+          typeof row.statistics === "object" && row.statistics
+            ? (row.statistics as Record<string, unknown>)
+            : null,
+      }))
+      .filter((item) => item.id);
     const campaignMetricById = new Map(
-      campaignMetricRows
-        .map((row) => ({
-          id: readString(row.campaignId, row.campaign_id, row.id),
-          stats:
-            typeof row.statistics === "object" && row.statistics
-              ? (row.statistics as Record<string, unknown>)
-              : null,
-        }))
-        .filter((item) => item.id),
+      campaignMetricItems.map((item) => [item.id, item.stats] as [string, Record<string, unknown> | null])
     );
     const campaignRevenueRows = Array.from(campaignMetricById.entries()).map(([id, stats]) => ({
       id,
