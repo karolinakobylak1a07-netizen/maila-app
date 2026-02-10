@@ -19,7 +19,6 @@ export async function GET() {
             senderDomain?: string | null;
             ownerEmail?: string | null;
             internalEmails?: string[];
-            deviceMobileShare?: number | null;
           };
         }
       | null;
@@ -35,7 +34,6 @@ export async function GET() {
               senderDomain: true,
               ownerEmail: true,
               internalEmails: true,
-              deviceMobileShare: true,
             },
           },
         },
