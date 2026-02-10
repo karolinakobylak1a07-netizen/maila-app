@@ -1814,7 +1814,11 @@ export async function POST(request: Request) {
         if (!datetime) continue;
         const date = new Date(datetime);
         if (Number.isNaN(date.getTime())) continue;
-        matrix[date.getDay()][date.getHours()] += 1;
+        const dayIndex = date.getDay();
+        const hourIndex = date.getHours();
+        if (matrix[dayIndex]) {
+          matrix[dayIndex][hourIndex] += 1;
+        }
       }
       const total = matrix.flat().reduce((acc, value) => acc + value, 0);
       return { matrix, total };
