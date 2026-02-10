@@ -6,7 +6,6 @@ type ProfileConfigPayload = {
   ownerEmail?: string | null;
   internalEmails?: string[] | null;
   internalProfileFilter?: Record<string, unknown> | null;
-  deviceMobileShare?: number | null;
 };
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
@@ -45,13 +44,6 @@ export async function POST(request: Request) {
   const ownerEmail = payload?.ownerEmail ? normalizeEmail(payload.ownerEmail) : null;
   const internalEmails = normalizeEmailList(payload?.internalEmails);
   const internalProfileFilter = payload?.internalProfileFilter ?? null;
-  const deviceMobileShareRaw = payload?.deviceMobileShare;
-  const deviceMobileShare =
-    typeof deviceMobileShareRaw === "number" && Number.isFinite(deviceMobileShareRaw)
-      ? Math.max(0, Math.min(100, deviceMobileShareRaw))
-      : deviceMobileShareRaw === null
-        ? null
-        : undefined;
   const mergedInternalEmails = Array.from(new Set([...(ownerEmail ? [ownerEmail] : []), ...internalEmails]));
 
   const updated = await db.clientProfile.update({
@@ -60,14 +52,12 @@ export async function POST(request: Request) {
       ownerEmail,
       internalEmails: mergedInternalEmails,
       internalProfileFilter: internalProfileFilter as unknown as undefined,
-      ...(deviceMobileShare !== undefined ? { deviceMobileShare } : {}),
     },
     select: {
       id: true,
       ownerEmail: true,
       internalEmails: true,
       internalProfileFilter: true,
-      deviceMobileShare: true,
     },
   });
 
