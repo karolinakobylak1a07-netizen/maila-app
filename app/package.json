@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "SKIP_TYPESCRIPT_CHECK=1 next build",
+    "build": "next build",
     "check": "next lint && tsc --noEmit",
     "db:generate": "prisma migrate dev",
     "db:sync": "node scripts/db-sync.mjs",
